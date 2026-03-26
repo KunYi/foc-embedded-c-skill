@@ -19,12 +19,12 @@ The `references/` directory contains constraints for the following topics:
 - `dq-transform-cordic.md`: CORDIC-accelerated Park/Clarke and rotation.
 
 **B. Sensing & Observers**
-- `current-sensing-topology.md`: Inline, 1-Shunt, 3-Shunt timing logic.
+- `current-sensing-topology.md`: 1/2/3 Shunt timing, Asymmetric PWM, PCB Kelvin routing, RC filtering limits.
 - `sensorless-observers.md`: SMO, High-frequency injection (HFI).
 - `position-sensors.md`: QEP, Hall Effect, Absolute Encoders.
 
 **C. Hardware & System**
-- `stm32g4-foc-hardware.md`: OPAMP, COMP, HRTIM hardware break logic.
+- `stm32g4-foc-hardware.md`: OPAMP, COMP->BRK, TIM1_TRGO ADC Sync, Dead-Time distortion compensation.
 - `motor-protection-state-machine.md`: Startup, Open-loop alignment, Stall detection.
 
 ## Future Roadmap

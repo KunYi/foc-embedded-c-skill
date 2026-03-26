@@ -27,7 +27,8 @@ Key Context Required:
 - Prefer `float32_t` via FPU for core algorithms unless MTPA tables strictly dictate fixed point.
 - Prefer `STM32G4xx` with CORDIC enabled for ALL trigonometric operations (Park, Inverse Park, SVPWM sector logic).
 - Prioritize decoupling control (Cross-coupling decoupling) in the dq-frame.
-- Make protection (Overcurrent, Overvoltage, Stall) higher priority than speed/position command tracking.
+- Make protection (Overcurrent via COMP->TIM_BRK, Overvoltage, Stall) higher priority than speed/position tracking.
+- **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Never output SVPWM duties without checking for dead-time current distortion. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
 - **Explicit Override**: If you know a mathematically, computationally, or architecturally superior approach for the target platform (STM32G4) that transcends standard textbook FOC (e.g., Branchless FPU SVPWM sector mappings or zero-wait RAM executions), you are ENCOURAGED to propose it. You MUST logically justify the latency vs. math stability trade-offs.
 
 ## Reference Documents (Complete File List)
