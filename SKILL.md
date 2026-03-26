@@ -127,6 +127,8 @@ Use these extensions when the product context requires them. They are not separa
 
 AI should consult the following domain-specific references when working on the corresponding topics. Fetch files as needed based on the user's request:
 
+When the user starts from a concrete task or symptom and the relevant subset is not obvious, prefer `references/problem-oriented-reading-guide.md` first so the document load stays focused.
+
 - **`references/problem-oriented-reading-guide.md`** -> First-stop navigation by task or symptom: bring-up, ADC timing, startup failure, braking trouble, thermal issues, host-command problems, resonance, SIL boundaries, and application-specific reading paths.
 
 - **`references/auto-tuning-identification.md`** -> **[READ FOR UNKNOWN MOTORS]** Stator Resistance ($R_s$), High-frequency Inductance ($L_d, L_q$), Flux Linkage ($\Psi$), Pole Pairs identification, Zero-Pole Cancellation PI tuning, digital delay bandwidth limits.

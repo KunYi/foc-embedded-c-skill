@@ -18,6 +18,7 @@ This repository is built as an **AI Control Framework**, not a template library.
 
 The `references/` directory contains constraints for the following topics:
 
+**Start Here**
 - `problem-oriented-reading-guide.md`: quick navigation by task or symptom, helping engineers and AI choose the right subset of references first.
 
 **A. Core Control & Algorithms**
@@ -34,7 +35,7 @@ The `references/` directory contains constraints for the following topics:
 - `sensorless-observers.md`: SMO with sigmoid boundary layer, PLL tracking (correct sign convention), convergence check, HFI.
 - `position-sensors.md`: QEP M/T speed estimation, Hall angle interpolation & period-based speed, SPI delay compensation.
 
-**C. Hardware & System**
+**C. Hardware & Protection**
 - `stm32g4-foc-hardware.md`: TIM1 center-aligned PWM init, ADC dual-simultaneous mode + DMA, OPAMP PGA, COMP→BRK fast trip, Dead-Time distortion compensation.
 - `protection-diagnostics.md`: Advanced $I^2t$ thermal overload modeling, dynamic torque limit rollback, protection hierarchy.
 - `motor-protection-state-machine.md`: FOC state machine with TRANSITION state, Open-loop V/f ramp, Observer convergence, Bumpless OL→CL transfer, Stall detection, Brake resistor chopper.
@@ -44,31 +45,35 @@ The `references/` directory contains constraints for the following topics:
 - `gate-driver-and-power-stage-constraints.md`: UVLO, desat, bootstrap limits, MOSFET/IPM/SiC/GaN constraints, and SOA-aware fault handling.
 - `emi-emc-isolation-and-cabling.md`: common-mode current, shielding, grounding, isolation assumptions, encoder/cable robustness, and EMI validation.
 - `thermal-system-modeling-and-derating.md`: winding/module/heatsink thermal paths, sensor placement validity, derating law design, and thermal validation.
-- `production-test-calibration-and-service.md`: self-test, calibration retention, end-of-line checks, field diagnostics, and service logging.
 - `safety-architecture-and-diagnostic-coverage.md`: safety boundaries, latched vs recoverable faults, watchdog layering, plausibility checks, and diagnostic coverage framing.
-- `mechanical-integration-and-servo-behavior.md`: homing, endstops, mechanical brake release, gearbox/backlash/compliance effects, and resonance-aware servo integration.
-- `firmware-lifecycle-and-update-strategy.md`: bootloader/update strategy, rollback, protocol compatibility, configuration migration, and release safety.
 - `fault-injection-and-abuse-testing.md`: deliberate fault injection, abuse cases, expected response categories, and failure-behavior validation.
 - `unit-conventions-and-control-contracts.md`: mechanical vs electrical units, RMS vs peak, torque/current contracts, sign conventions, and telemetry naming discipline.
 - `nvh-and-acoustic-optimization.md`: acoustic/noise sources, PWM and dead-time trade-offs, resonance awareness, and validation of smoothness.
 - `compliance-and-qualification.md`: qualification-style disturbance framing, repeatable validation evidence, and firmware-relevant product robustness expectations.
+
+**D. Validation & Debug**
+- `production-test-calibration-and-service.md`: self-test, calibration retention, end-of-line checks, field diagnostics, and service logging.
+- `data-logging-replay-and-diagnostics-workflow.md`: event snapshots, replay mindset, diagnostic classification, and field-friendly debug workflow.
+- `commissioning-and-bring-up-playbook.md`: staged first-power validation, safe loop-enablement order, and common bring-up failure patterns.
+- `measurement-and-instrumentation-best-practices.md`: probe choice, grounding pitfalls, bandwidth honesty, DAC/telemetry limits, and how to measure drive behavior correctly.
+- `common-symptom-to-debug-map.md`: symptom-driven triage, likely fault domains, first measurements to make, and what not to change too early.
+- `sil-and-model-based-validation-boundaries.md`: what SIL can prove, what it cannot, model-fidelity levels, measured-parameter correlation, and simulation boundary honesty.
+
+**E. Applications & Productization**
+- `mechanical-integration-and-servo-behavior.md`: homing, endstops, mechanical brake release, gearbox/backlash/compliance effects, and resonance-aware servo integration.
+- `firmware-lifecycle-and-update-strategy.md`: bootloader/update strategy, rollback, protocol compatibility, configuration migration, and release safety.
 - `motor-and-load-characterization.md`: inertia/friction/compliance characterization, resonance awareness, and why tuning on a free motor is not enough.
 - `resonance-identification-and-speed-avoidance.md`: narrow-band vibration diagnosis, forbidden-speed strategy, and resonance mitigation validation.
 - `compressor-and-refrigeration-drive-applications.md`: pressure-dependent compressor loads, correlated pressure/current/vibration analysis, and operating-map-based mitigation.
-- `data-logging-replay-and-diagnostics-workflow.md`: event snapshots, replay mindset, diagnostic classification, and field-friendly debug workflow.
-- `commissioning-and-bring-up-playbook.md`: staged first-power validation, safe loop-enablement order, and common bring-up failure patterns.
 - `configuration-and-parameter-governance.md`: parameter ownership, variant discipline, NVM corruption handling, and calibration traceability.
 - `fan-and-blower-applications.md`: airflow-device behavior, restriction sensitivity, startup quality, and acoustic priorities.
 - `pump-applications.md`: hydraulic-load behavior, startup under head/load, and pump-specific protection and ramp concerns.
 - `servo-actuator-applications.md`: trajectory quality, reversal behavior, hold stability, homing/endstop handling, and actuator-focused validation.
-- `sil-and-model-based-validation-boundaries.md`: what SIL can prove, what it cannot, model-fidelity levels, measured-parameter correlation, and simulation boundary honesty.
-- `measurement-and-instrumentation-best-practices.md`: probe choice, grounding pitfalls, bandwidth honesty, DAC/telemetry limits, and how to measure drive behavior correctly.
-- `common-symptom-to-debug-map.md`: symptom-driven triage, likely fault domains, first measurements to make, and what not to change too early.
 
-**D. Generic Drives & Auto-Tuning**
+**F. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
 
-**E. Acceleration & Filtering**
+**G. Acceleration & Filtering**
 - `fmac-filtering-and-compensation.md`: FMAC IIR coefficient loading, decision criteria, FPU vs FMAC trade-offs.
 
 ## Development Workflow
