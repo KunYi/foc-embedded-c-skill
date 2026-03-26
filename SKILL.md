@@ -62,9 +62,13 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
 - **Explicit Override**: If you know a mathematically, computationally, or architecturally superior approach for the target platform (STM32G4) that transcends standard textbook FOC (e.g., Branchless FPU SVPWM sector mappings, zero-wait RAM executions, or a better split between FPU and hardware accelerators), you are ENCOURAGED to propose it. You MUST logically justify the latency vs. math stability trade-offs.
 
-## Core Workflow (Step-by-Step AI Execution)
+## Core Workflow
 
-When a user requests motor drive code or debugging analysis, use the following default sequence unless the task is clearly narrower (for example review-only, architecture comparison, or a focused bug hunt):
+When a user requests motor drive code or debugging analysis, use the following default path unless the task is clearly narrower (for example review-only, architecture comparison, or a focused bug hunt).
+
+### Core Bring-Up Path
+
+These are the main steps that define the control architecture and the first-pass implementation:
 
 1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, PWM Frequency, Command Source, Control Mode, DC Bus Energy Path, and Power Entry Topology. If any of these materially affect the design and are still unknown, stop and ASK.
 2. **Parameter Identification**: Check if motor parameters are known. If not, guide through Auto-Tuning (see `auto-tuning-identification.md`).
@@ -74,20 +78,25 @@ When a user requests motor drive code or debugging analysis, use the following d
    - **Trapezoidal BEMF (true BLDC)** → Consider six-step commutation (`bldc-six-step.md`)
    - **"BLDC" with sinusoidal BEMF** → Use sinusoidal FOC despite the label
 5. **Select Topology/Sensors**: Based on user context, fetch the specific sensor files (e.g., `sensorless-observers.md` or `position-sensors.md`).
-6. **Define Command and Mode Architecture**: If the product is controlled by UART, CAN, PWM input, or a host controller, read `command-and-supervisory-interfaces.md` and separate the command layer from the real-time motor loop. Define mode ownership, timeout behavior, target ramping, and what happens on communication loss.
-7. **Define Telemetry and Diagnostics**: If the design includes a host controller or product interface, read `can-uart-telemetry-and-diagnostics.md` and define command integrity checks, telemetry rates, fault reporting, and communication timeout observability.
-8. **Define Braking and Energy Handling**: If the drive may decelerate high inertia, backdrive, or regenerate, read `braking-and-regeneration.md` and define whether the DC bus can absorb returned energy, whether braking is regenerative or dissipative, and how normal braking differs from emergency halt.
-9. **Define Power Entry and DC-Link Lifecycle**: Read `power-entry-and-dc-link-management.md` when the bus source, precharge, contactor logic, or bus-capacitor lifecycle matters. Define inrush handling, brown-in/brown-out behavior, and what qualifies the bus as ready to enable PWM.
-10. **Define Power-Stage and Gate-Driver Constraints**: Read `gate-driver-and-power-stage-constraints.md` for UVLO, desat, SOA, bootstrap limits, device type trade-offs, and fault containment behavior.
-11. **Define EMC, Isolation, and Cabling Constraints**: Read `emi-emc-isolation-and-cabling.md` when the product includes long motor cables, encoders, isolated interfaces, or aggressive switching edges. Account for common-mode current, shielding, grounding, and isolation assumptions before finalizing firmware behavior.
-12. **Define Production Test and Service Strategy**: Read `production-test-calibration-and-service.md` when the solution must survive manufacturing, field service, or fleet diagnostics. Include self-test, calibration retention, production validation, and service log expectations.
-13. **Define Safety Architecture and Diagnostic Coverage**: Read `safety-architecture-and-diagnostic-coverage.md` when the product requires fault layering, latched/recoverable fault semantics, watchdog policy, or explicit diagnostic coverage boundaries.
-14. **Define Mechanical and Servo Integration Constraints**: Read `mechanical-integration-and-servo-behavior.md` when homing, endstops, brake release, gearbox effects, backlash, resonance, or actuator mechanics influence the control design.
-15. **Define Firmware Lifecycle and Update Strategy**: Read `firmware-lifecycle-and-update-strategy.md` when the product must support bootloaders, field updates, rollback, configuration migration, or host/firmware compatibility policy.
-16. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
-17. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
-18. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
-19. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
+6. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
+7. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
+8. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
+9. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
+
+### System Integration Extensions
+
+Use these extensions when the product context requires them. They are not separate from the control design, but they do not need to dominate every narrow task:
+
+1. **Command and Mode Architecture**: If the product is controlled by UART, CAN, PWM input, or a host controller, read `command-and-supervisory-interfaces.md` and separate the command layer from the real-time motor loop. Define mode ownership, timeout behavior, target ramping, and what happens on communication loss.
+2. **Telemetry and Diagnostics**: If the design includes a host controller or product interface, read `can-uart-telemetry-and-diagnostics.md` and define command integrity checks, telemetry rates, fault reporting, and communication timeout observability.
+3. **Braking and Energy Handling**: If the drive may decelerate high inertia, backdrive, or regenerate, read `braking-and-regeneration.md` and define whether the DC bus can absorb returned energy, whether braking is regenerative or dissipative, and how normal braking differs from emergency halt.
+4. **Power Entry and DC-Link Lifecycle**: Read `power-entry-and-dc-link-management.md` when the bus source, precharge, contactor logic, or bus-capacitor lifecycle matters. Define inrush handling, brown-in/brown-out behavior, and what qualifies the bus as ready to enable PWM.
+5. **Power-Stage and Gate-Driver Constraints**: Read `gate-driver-and-power-stage-constraints.md` for UVLO, desat, SOA, bootstrap limits, device type trade-offs, and fault containment behavior.
+6. **EMC, Isolation, and Cabling Constraints**: Read `emi-emc-isolation-and-cabling.md` when the product includes long motor cables, encoders, isolated interfaces, or aggressive switching edges. Account for common-mode current, shielding, grounding, and isolation assumptions before finalizing firmware behavior.
+7. **Production Test and Service Strategy**: Read `production-test-calibration-and-service.md` when the solution must survive manufacturing, field service, or fleet diagnostics. Include self-test, calibration retention, production validation, and service log expectations.
+8. **Safety Architecture and Diagnostic Coverage**: Read `safety-architecture-and-diagnostic-coverage.md` when the product requires fault layering, latched/recoverable fault semantics, watchdog policy, or explicit diagnostic coverage boundaries.
+9. **Mechanical and Servo Integration Constraints**: Read `mechanical-integration-and-servo-behavior.md` when homing, endstops, brake release, gearbox effects, backlash, resonance, or actuator mechanics influence the control design.
+10. **Firmware Lifecycle and Update Strategy**: Read `firmware-lifecycle-and-update-strategy.md` when the product must support bootloaders, field updates, rollback, configuration migration, or host/firmware compatibility policy.
 
 ## Reference Documents (Knowledge Base Index)
 
