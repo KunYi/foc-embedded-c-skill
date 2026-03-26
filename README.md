@@ -36,6 +36,7 @@ The `references/` directory contains constraints for the following topics:
 - `protection-diagnostics.md`: Advanced $I^2t$ thermal overload modeling, dynamic torque limit rollback, protection hierarchy.
 - `motor-protection-state-machine.md`: FOC state machine with TRANSITION state, Open-loop V/f ramp, Observer convergence, Bumpless OL→CL transfer, Stall detection, Brake resistor chopper.
 - `emergency-protection-halt.md`: HardFault overrides, BDTR/OISx/OISxN safe-states, High-Z vs Active-Short-Circuit (ASC) decision tree, Overspeed.
+- `braking-and-regeneration.md`: normal braking vs emergency halt, regenerative vs dissipative braking, DC bus sink capability, brake chopper strategy, and energy-handling verification.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
