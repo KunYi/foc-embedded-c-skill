@@ -9,7 +9,7 @@ An AI skill focused on embedded C development for motor control and Field-Orient
 ## Core Philosophy
 
 This repository is built as an **AI Control Framework**, not a template library. It dictates:
-1. **Interactive Decision Trees**: The AI must ask about your shunt topology, motor type, and PWM frequency before writing code.
+1. **Interactive Decision Trees**: The AI must ask about the runtime constraints that materially change the design path before writing code, such as shunt topology, motor type, PWM frequency, command source, control mode, and DC-bus energy handling assumptions.
 2. **Production Code Priority**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook-only approaches when mathematically equivalent.
 3. **Override Clauses**: The AI is empowered to propose cutting-edge STM32G4 optimization tricks (CORDIC, FMAC, Branchless ASM) if they outperform standard textbook algorithms.
 4. **Hardware Acceptance Criteria**: The AI will instruct you on how to verify its code using oscilloscopes, DACs, and physical constraints.
@@ -41,6 +41,7 @@ The `references/` directory contains constraints for the following topics:
 - `power-entry-and-dc-link-management.md`: precharge, inrush, contactor/relay sequencing, bus-ready logic, DC-link stress, and brown-in/brown-out handling.
 - `gate-driver-and-power-stage-constraints.md`: UVLO, desat, bootstrap limits, MOSFET/IPM/SiC/GaN constraints, and SOA-aware fault handling.
 - `emi-emc-isolation-and-cabling.md`: common-mode current, shielding, grounding, isolation assumptions, encoder/cable robustness, and EMI validation.
+- `thermal-system-modeling-and-derating.md`: winding/module/heatsink thermal paths, sensor placement validity, derating law design, and thermal validation.
 - `production-test-calibration-and-service.md`: self-test, calibration retention, end-of-line checks, field diagnostics, and service logging.
 - `safety-architecture-and-diagnostic-coverage.md`: safety boundaries, latched vs recoverable faults, watchdog layering, plausibility checks, and diagnostic coverage framing.
 - `mechanical-integration-and-servo-behavior.md`: homing, endstops, mechanical brake release, gearbox/backlash/compliance effects, and resonance-aware servo integration.
@@ -88,7 +89,7 @@ This project is released under the `MIT` License.
 
 Copyright (c) 2026 KUNYI CHEN `<kunyi.chen@gmail.com>`
 
-See [LICENSE](/tmp/foc-drive-skill/LICENSE) for the full text.
+See [LICENSE](./LICENSE) for the full text.
 
 ## Future Roadmap
 - Complete the `.vscode` settings and `CMakeLists.txt` open-source build skeleton.

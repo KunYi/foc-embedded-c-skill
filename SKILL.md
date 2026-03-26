@@ -50,7 +50,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - Prefer STM32G4 hardware acceleration when it materially improves determinism or ISR cycle margin: typically CORDIC for trigonometric and frame-rotation workloads, and FMAC for repeated filtering or compensator paths when coefficient structure, numeric scaling, and latency budget justify it.
 - Prioritize decoupling control (Cross-coupling decoupling) in the dq-frame.
 - Make protection (Overcurrent via COMP→TIM_BRK, Overvoltage, Stall) higher priority than speed/position tracking.
-- **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Account for dead-time current distortion in all modulation code — during initial bring-up, verify baseline behavior before enabling compensation. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
+- **Hardware Integration Priority**: Enforce a verified timer-triggered ADC synchronization path. Account for dead-time current distortion in all modulation code — during initial bring-up, verify baseline behavior before enabling compensation. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
 - **Hardware Constraints First**: Prefer physical boundary conditions over canned code recipes. Examples: avoid ADC sampling during PWM-edge ringing, enforce minimum valid current-sampling windows, respect bootstrap refresh duty limits, and preserve comparator/gate-driver shutdown margins.
 - **Energy-Flow Awareness**: During deceleration or backdriving, the motor drive can become an energy source into the DC bus. Always identify whether the DC source can absorb regenerative power, whether a brake chopper exists, and what must happen when the bus cannot safely sink returned energy.
 - **Power-Stage Survival First**: Check power-entry sequencing, gate-driver UVLO/desat behavior, device SOA, isolation boundaries, and EMI/cabling constraints before assuming the modulation and control law can be used safely on real hardware.
@@ -97,7 +97,8 @@ Use these extensions when the product context requires them. They are not separa
 7. **Production Test and Service Strategy**: Read `production-test-calibration-and-service.md` when the solution must survive manufacturing, field service, or fleet diagnostics. Include self-test, calibration retention, production validation, and service log expectations.
 8. **Safety Architecture and Diagnostic Coverage**: Read `safety-architecture-and-diagnostic-coverage.md` when the product requires fault layering, latched/recoverable fault semantics, watchdog policy, or explicit diagnostic coverage boundaries.
 9. **Mechanical and Servo Integration Constraints**: Read `mechanical-integration-and-servo-behavior.md` when homing, endstops, brake release, gearbox effects, backlash, resonance, or actuator mechanics influence the control design.
-10. **Firmware Lifecycle and Update Strategy**: Read `firmware-lifecycle-and-update-strategy.md` when the product must support bootloaders, field updates, rollback, configuration migration, or host/firmware compatibility policy.
+10. **Thermal System Modeling and Derating**: Read `thermal-system-modeling-and-derating.md` when winding, module, heatsink, or enclosure thermal limits materially influence continuous current, overload time, derating law, or sensor placement.
+11. **Firmware Lifecycle and Update Strategy**: Read `firmware-lifecycle-and-update-strategy.md` when the product must support bootloaders, field updates, rollback, configuration migration, or host/firmware compatibility policy.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -120,6 +121,7 @@ AI should consult the following domain-specific references when working on the c
 - **`references/production-test-calibration-and-service.md`** -> Startup self-test, calibration retention, end-of-line checks, service logging, fault injection, and production/field diagnostics expectations.
 - **`references/safety-architecture-and-diagnostic-coverage.md`** -> Safety-boundary assumptions, fault layering, watchdog and diagnostic-monitor strategy, latched versus recoverable faults, and expectations for diagnostic coverage and plausibility checks.
 - **`references/mechanical-integration-and-servo-behavior.md`** -> Homing, endstops, brake release, gearbox/backlash/compliance effects, resonance-aware servo behavior, and actuator-level validation.
+- **`references/thermal-system-modeling-and-derating.md`** -> Winding/module/heatsink thermal paths, sensor-placement validity, thermal time constants, derating law construction, and bench correlation of model versus measured temperature behavior.
 - **`references/firmware-lifecycle-and-update-strategy.md`** -> Bootloader/update architecture, rollback policy, protocol/version compatibility, configuration migration, and lifecycle-safe firmware release expectations.
 - **`references/sensorless-observers.md`** -> Sliding Mode Observer (SMO) with sigmoid boundary layer, BEMF extraction, Observer PLL Tracking with correct sign convention, convergence check, High-Frequency Injection (HFI).
 - **`references/position-sensors.md`** -> QEP Encoder speed estimation (M/T method), Hall Effect 60-degree angle interpolation and period-based speed, SPI Absolute Encoder delay compensation.
