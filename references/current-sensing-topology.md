@@ -33,6 +33,14 @@ You MUST place a hardware low-pass RC filter before the OPAMP to smooth out PWM 
 - **Software Action**: You only need 2 ADC readings (by Kirchhoff's $I_u + I_v + I_w = 0$), but if PWM duty approaches the region where valid sampling windows collapse, software must either clamp duty, alter modulation, or reconstruct currents according to the active sector. The safe duty ceiling is hardware-dependent.
 - **STM32G4**: Use ADC1 + ADC2 in dual regular simultaneous mode for two channels, or injected channels triggered by TIM1_TRGO. The third phase is computed via KCL.
 
+**Redundancy Opportunity**:
+Three-shunt hardware can do more than produce currents; it can also detect faults.
+- compare the directly measured third phase against the KCL-reconstructed value
+- check whether $I_A + I_B + I_C$ stays near zero within the expected sensing error
+- watch for one channel sticking, saturating, or drifting relative to the others
+
+This is not a simple raw-value comparison. The plausibility logic must account for ADC offset, gain tolerance, PWM sector validity, and ripple.
+
 ### B. Two-Shunt Sensing (Low-Side)
 - Shunts on 2 of 3 low-side legs (commonly Phase A and Phase B, or Phase A and Phase C). This is the **most common cost-optimized topology** used in production drives (e.g., ST B-G431B-ESC1 Discovery Kit).
 - **Advantage**: Saves one shunt resistor, one op-amp channel, and simplifies PCB. KCL reconstructs the missing phase: $I_C = -(I_A + I_B)$.
@@ -154,6 +162,7 @@ Use bench verification to prove the implementation matches the physical system:
 - **Noise acceptance**: With the motor phase held at a known current or at zero-current idle, verify the ADC sample-to-sample noise and offset remain below the budget required for current-loop stability and zero-crossing decisions.
 - **Duty-limit acceptance**: At the maximum commanded duty, verify both the current-sampling window and any bootstrap-powered gate-drive rails remain within safe operating margins.
 - **Reconstruction acceptance**: For 2-shunt and 1-shunt systems, compare reconstructed phase currents against a trusted current probe or a lower-speed validation mode. The reconstruction error must stay bounded across sectors and near duty extremes.
+- **Three-shunt plausibility acceptance**: When three independent shunts are available, verify that KCL residuals and measured-versus-reconstructed mismatch remain inside the documented tolerance band across load, duty, and temperature.
 
 ## 6. Topology Selection Guide
 

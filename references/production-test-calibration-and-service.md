@@ -28,11 +28,18 @@ Common items:
 - temperature scaling
 - encoder zero or commutation offset
 
+Recommended distinction:
+- **Offset calibration**: often performed at startup or service time when torque is disabled and current is known to be zero
+- **Gain calibration**: usually established at manufacturing or controlled service using a known current reference or trusted external instrument
+
+Do not silently assume factory resistor tolerances are enough if current accuracy materially affects torque, protection, or fault plausibility thresholds.
+
 ## 3. End-of-Line and Production Validation
 
 Typical production checks include:
 - bus-power bring-up and precharge verification
 - ADC/current-sense offset sanity
+- current-sense gain verification against a known current or trusted external reference
 - basic PWM output and break-path verification
 - sensor direction and plausibility
 - no-load spin or limited functional spin where safe
@@ -59,6 +66,8 @@ Before trusting a product, deliberately inject:
 - brown-out or undervoltage
 - overcurrent trip
 - thermal warning and thermal fault
+
+Use MCU internal temperature only as a supplemental diagnostic if needed. Product-grade thermal protection should primarily rely on the temperature channels that actually represent the motor, module, or heatsink thermal state.
 
 Acceptance criteria should define whether the drive latches, retries, derates, or requires operator intervention.
 

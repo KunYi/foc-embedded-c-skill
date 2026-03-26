@@ -73,6 +73,7 @@ These are the main steps that define the control architecture and the first-pass
 1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, PWM Frequency, Command Source, Control Mode, DC Bus Energy Path, and Power Entry Topology. If any of these materially affect the design and are still unknown, stop and ASK.
 2. **Parameter Identification**: Check if motor parameters are known. If not, guide through Auto-Tuning (see `auto-tuning-identification.md`).
 3. **Establish Physical Limits**: Before writing any math, read `stm32g4-foc-hardware.md` and `current-sensing-topology.md` to understand the ADC synchronization, dead-time, ringing, Kelvin routing, bootstrap, and PCB routing constraints.
+   - If ADC throughput, DMA ownership, or ISR timing margin is a concern, also read `adc-dma-buffering-and-timing.md`.
 4. **Select Control Method**: Based on motor type and BEMF profile:
    - **Sinusoidal BEMF (PMSM)** → Sinusoidal FOC (this skill's primary focus)
    - **Trapezoidal BEMF (true BLDC)** → Consider six-step commutation (`bldc-six-step.md`)
@@ -109,6 +110,7 @@ AI should consult the following domain-specific references when working on the c
 - **`references/dq-transform-cordic.md`** -> Clarke (2-phase KCL optimized), Park, Inverse Park, STM32G4 CORDIC CSR initialization, Async CORDIC ISR pipeline pattern.
 - **`references/fmac-filtering-and-compensation.md`** -> When to offload filtering or compensator workloads to STM32G4 FMAC, IIR coefficient loading example, when plain FPU code is better, and what trade-offs must be justified.
 - **`references/current-sensing-topology.md`** -> 1-Shunt, 2-Shunt, 3-Shunt timing, Inline sensing, Asymmetric PWM injection, Shunt Resistor ESL, PCB Kelvin connection, RC Anti-aliasing filters, topology selection guide.
+- **`references/adc-dma-buffering-and-timing.md`** -> Circular versus ping-pong DMA ownership, ADC sample-packet integrity, compile-time timing guards, and HRTIM as a conditional high-frequency option rather than a default path.
 - **`references/command-and-supervisory-interfaces.md`** -> UART/CAN/PWM-input command paths, mode management for torque/speed/position/damping/follow modes, command timeout behavior, target ramping, telemetry, and validation of host-to-motor control behavior.
 - **`references/can-uart-telemetry-and-diagnostics.md`** -> Product-grade command framing, telemetry grouping, fault/state reporting, CRC and timeout handling, bus-load limits, and verification of host-visible diagnostics.
 - **`references/braking-and-regeneration.md`** -> Normal deceleration versus emergency braking, regenerative versus dissipative energy handling, when the drive behaves as an energy source into the DC bus, brake chopper strategy, source sink-capability constraints, and validation of bus-energy handling.

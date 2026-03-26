@@ -21,6 +21,18 @@ STM32G4 includes ultra-fast internal OPAMPs (PGA mode) allowing you to directly 
 - Set PGA gain (x2, x4, x8, x16, x32, x64).
 - Calibrate the OPAMP intrinsic offset (`OFR` register) during startup (while PWMs are disabled) and subtract this DC bias in software before feeding readings to Clarke transform. Re-check offset behavior across temperature and supply variation if accuracy is critical.
 
+## 2A. Compile-Time Configuration Guards
+
+Use compile-time checks for simple configuration invariants that should never reach the bench in a broken state:
+
+```c
+_Static_assert(PWM_FREQ_HZ >= CURRENT_LOOP_HZ, "Current loop rate cannot exceed PWM trigger rate");
+_Static_assert(TIM_CLK_HZ > (2u * PWM_FREQ_HZ), "Timer clock too low for requested center-aligned PWM");
+_Static_assert(DEAD_TIME_NS < (500000000u / PWM_FREQ_HZ), "Dead time must be small relative to half PWM period");
+```
+
+These checks do not replace hardware validation. They only block obviously inconsistent builds early.
+
 ## 3. Zero-Cycle Hardware Trip (COMP -> TIM1_BRK)
 Do NOT rely on the ADC ISR to shut down the drive. A low-resistance motor under a short circuit will ramp phase current past destruction levels in $< 5\mu s$.
 - **Rule**: Map the internal Analog Comparator (COMP) directly to the Shunt input.
@@ -227,6 +239,25 @@ void adc_foc_init(void) {
 }
 ```
 
+### DMA Strategy Notes
+
+- **Circular DMA** is usually the default choice for fixed current-sample packets.
+- **Half-transfer / transfer-complete ownership** is often sufficient if the control loop consumes samples in a stable repeating cadence.
+- **Ping-pong / double buffering** becomes attractive when high PWM rates, larger sample packets, or background processing make it risky to read from a buffer that DMA may still be writing.
+
+Choose the simplest ownership model that guarantees the control loop never consumes a partially updated sample set.
+
+## 6A. HRTIM as an Advanced Option
+
+For most STM32G4 motor drives, TIM1/TIM8 remain the practical default. Consider HRTIM only when the application has a real need for unusually high switching frequency or finer PWM timing control than the standard advanced timers support comfortably.
+
+Use HRTIM conditionally:
+- if PWM frequency is pushed into a regime where timer edge placement becomes the limiter
+- if minimum pulse placement or modulation timing is the actual bottleneck
+- if the added complexity is justified by measured system benefit
+
+Do not select HRTIM merely because it exists; the sensing window, switching loss, gate-driver timing, and EMI burden all become harder at those operating points.
+
 ### Bus Voltage & Temperature Sampling
 
 Avoid sampling bus voltage and temperature in the time-critical dual-simultaneous sequence. Instead, use **injected channels** triggered at a lower rate, or sample them during the second half of the PWM period when current readings are not needed:
@@ -259,6 +290,7 @@ Before trusting the control-loop math, verify the hardware timing path directly:
 - Sweep the sampling instant (`CCR4` or equivalent) until the sampled current lies inside a quiet window after switching transients.
 - Verify whether the chosen trigger source produces one sample or two samples per PWM period in the selected timer mode.
 - Confirm the dual-ADC DMA word packing matches the software unpacking order under sustained PWM operation, not just at idle.
+- If using ping-pong or half-buffer ownership, verify the control loop only processes completed DMA regions and never races the DMA writer.
 - Inject or emulate an overcurrent event and measure comparator assertion to gate disable at the power stage. Use that measured latency, not assumed nanoseconds, in protection arguments.
 - Validate current-waveform symmetry and low-speed acoustic behavior with dead-time compensation disabled first, then re-enable compensation and confirm improvement rather than instability.
 - At the highest commanded duty and bus voltage, confirm current sensing still has a valid window and that any bootstrap-supplied high-side gate driver remains within its undervoltage-safe region.
