@@ -59,6 +59,7 @@ The `references/` directory contains constraints for the following topics:
 - `fan-and-blower-applications.md`: airflow-device behavior, restriction sensitivity, startup quality, and acoustic priorities.
 - `pump-applications.md`: hydraulic-load behavior, startup under head/load, and pump-specific protection and ramp concerns.
 - `servo-actuator-applications.md`: trajectory quality, reversal behavior, hold stability, homing/endstop handling, and actuator-focused validation.
+- `sil-and-model-based-validation-boundaries.md`: what SIL can prove, what it cannot, model-fidelity levels, measured-parameter correlation, and simulation boundary honesty.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
@@ -105,6 +106,7 @@ Most modern large language models and agent frameworks can work with a repositor
 - Guide staged commissioning so engineers know what must be proven before they energize the next control layer.
 - Treat parameter packs, calibration data, and hardware variants as governed product assets rather than loose constants.
 - Adapt recommendations to common application families such as fans, pumps, and servo actuators instead of treating every load the same way.
+- Use SIL or model-based reasoning responsibly, without overstating simulation as proof of real hardware timing, EMI, thermal, or mechanical behavior.
 
 ## License
 
