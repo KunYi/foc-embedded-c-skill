@@ -9,11 +9,12 @@ The register choices and timing numbers below are typical STM32G4-oriented start
 
 If you sample phase current arbitrarily, you will sample inductive flyback, dead-time ringing, or diode reverse-recovery spikes. The sensor signal is only valid when the bottom FET is fully ON and ringing has subsided.
 
-- **Synchronization Mechanic**: 
+- **Synchronization Mechanic**:
   The PWM timer (e.g., TIM1) runs in Center-Aligned Mode (Up-Down counting). You MUST link the `TIM1_TRGO` event to the ADC trigger.
   - Use a trigger source that maps to a known valid current-sampling instant. On STM32 advanced timers, a compare event such as `CCR4` is often preferable when you need a single, explicitly placed sampling point within the PWM period.
   - Do not assume the timer update event uniquely identifies the desired current valley in center-aligned mode; validate the exact trigger behavior against the timer mode and repetition-counter configuration.
   - **Latency Warning**: Account for op-amp settling, ADC acquisition time, propagation delay, and switching-node ringing. Place the trigger where the measured current is valid, not merely where the timer is geometrically centered.
+  - **Verification Rule**: Treat the trigger register choice as provisional until the board proves it. The accepted sampling point is the one that produces a stable current waveform on the scope and repeatable ADC data across duty, temperature, and load.
 
 ## 2. Internal OPAMPs
 STM32G4 includes ultra-fast internal OPAMPs (PGA mode) allowing you to directly route the physical shunt voltage to the MCU pin, eliminating external amplifier chips.
@@ -21,17 +22,17 @@ STM32G4 includes ultra-fast internal OPAMPs (PGA mode) allowing you to directly 
 - Calibrate the OPAMP intrinsic offset (`OFR` register) during startup (while PWMs are disabled) and subtract this DC bias in software before feeding readings to Clarke transform. Re-check offset behavior across temperature and supply variation if accuracy is critical.
 
 ## 3. Zero-Cycle Hardware Trip (COMP -> TIM1_BRK)
-Do NOT rely on the ADC ISR to shut down the drive. A low-resistance motor under a short circuit will ramp phase current past destruction levels in $< 5\mu s$. 
+Do NOT rely on the ADC ISR to shut down the drive. A low-resistance motor under a short circuit will ramp phase current past destruction levels in $< 5\mu s$.
 - **Rule**: Map the internal Analog Comparator (COMP) directly to the Shunt input.
 - Set the DAC internally as the COMP negative reference when that architecture fits your current-limit strategy.
 - Wire COMP output to `TIM1_BRK` (Break Input).
 - **Result**: When current exceeds limits, the hardware break path reacts far faster than any software ISR path. Final shutdown latency still depends on comparator propagation, timer break handling, gate-driver behavior, and power-stage turn-off dynamics, so confirm it on the bench.
 
-## 4. PWM Dead-Time & The Distortion Dilemma 
+## 4. PWM Dead-Time & The Distortion Dilemma
 
 Gate driver shoot-through will vaporize the half-bridge. STM32 Advanced Timers provide hardware Dead-Time (`TIM_BDTR` register) to delay the turn-on of the complementary switch.
 
-**The Physics Problem (Dead-Time Distortion)**: 
+**The Physics Problem (Dead-Time Distortion)**:
 During the dead-time interval, neither FET is ON. Phase current freewheels through body diodes. The phase voltage is determined NOT by the PWM duty, but by the **polarity (sign) of the phase current**. This introduces a massive non-linear voltage error at zero-crossings, ruining low-speed FOC control and causing current THD.
 
 ```c
@@ -40,7 +41,7 @@ During the dead-time interval, neither FET is ON. Phase current freewheels throu
 /**
  * @brief Compensates for Dead-time voltage errors.
  *        Apply this directly to phase voltage duties before updating timer registers.
- * 
+ *
  * @param raw_duty      Uncorrected duty cycle [0.0 .. 1.0]
  * @param i_phase       Measured phase current [A]
  * @param dt_comp_value Precalculated duty fraction: dead_time_ns / (PWM_period_ns / 2)
@@ -55,15 +56,15 @@ __attribute__((always_inline)) static inline float32_t dead_time_compensation(
        Commanded voltage is effectively reduced → add compensation.
        If current is negative, body diode clamps to VBUS during DT.
        Commanded voltage is effectively increased → subtract compensation. */
-    
+
     if (i_phase > i_threshold) {
-        return raw_duty + dt_comp_value; 
+        return raw_duty + dt_comp_value;
     } else if (i_phase < -i_threshold) {
         return raw_duty - dt_comp_value;
     } else {
         /* Intentionally empty for MISRA compliance */
     }
-    
+
     /* Current is near zero-crossing: dead-zone region.
      * Options:
      *   a) No compensation (shown here) — simple, small distortion near zero.
@@ -72,7 +73,7 @@ __attribute__((always_inline)) static inline float32_t dead_time_compensation(
      *   c) Observer-based: use the dq-frame current command sign
      *      instead of the noisy measured phase current.
      * Choose based on acoustic noise and THD tolerance. */
-    return raw_duty; 
+    return raw_duty;
 }
 ```
 
@@ -250,14 +251,16 @@ void adc_read_auxiliary(float32_t *v_bus, float32_t *temperature) {
 }
 ```
 
-## 7. Bench Bring-Up Checklist
+## 7. Bench Bring-Up and Acceptance Criteria
 
 Before trusting the control-loop math, verify the hardware timing path directly:
 
 - Scope PWM phase voltage, low-side gate command, ADC trigger, and current-sense output simultaneously.
 - Sweep the sampling instant (`CCR4` or equivalent) until the sampled current lies inside a quiet window after switching transients.
 - Verify whether the chosen trigger source produces one sample or two samples per PWM period in the selected timer mode.
-- Confirm dual-ADC DMA word packing and channel ordering by injecting known DC currents or offsets.
+- Confirm the dual-ADC DMA word packing matches the software unpacking order under sustained PWM operation, not just at idle.
+- Inject or emulate an overcurrent event and measure comparator assertion to gate disable at the power stage. Use that measured latency, not assumed nanoseconds, in protection arguments.
+- Validate current-waveform symmetry and low-speed acoustic behavior with dead-time compensation disabled first, then re-enable compensation and confirm improvement rather than instability.
+- At the highest commanded duty and bus voltage, confirm current sensing still has a valid window and that any bootstrap-supplied high-side gate driver remains within its undervoltage-safe region.
 - Verify dead-time settings against actual gate-driver waveforms, not only register calculations.
-- Measure fault shutdown latency from overcurrent stimulus to gate-disable at the gate-driver pins.
 - Re-check all of the above at low bus voltage, high bus voltage, hot board temperature, and worst-case PWM duty.

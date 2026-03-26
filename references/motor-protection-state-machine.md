@@ -1,7 +1,7 @@
 # Motor Protection & State Machine (Reference)
 
 ## Overview
-FOC software must rigidly orchestrate the transition from a dead stop to a spinning rotor while maintaining hardware safety. 
+FOC software must rigidly orchestrate the transition from a dead stop to a spinning rotor while maintaining hardware safety.
 
 Treat the sequence and thresholds in this document as reference patterns, not universal constants. Current levels, dwell times, and trip thresholds must be scaled to the motor's thermal limits, inverter current capability, bus voltage, and mechanical risk.
 
@@ -21,7 +21,7 @@ typedef enum {
 ```
 
 ### Alignment (Open-Loop Lock)
-For incremental encoders (QEP), the system powers up blind. 
+For incremental encoders (QEP), the system powers up blind.
 - You MUST force the state machine into `FOC_STATE_ALIGNMENT`.
 - Apply a D-axis alignment current and set `I_q_ref = 0A`, then hold a fixed electrical angle such as $\theta = 0$. Start from the minimum current that reliably pulls the rotor into a known position.
 - A common starting point is a modest fraction of rated current, then increase only as needed. Avoid using a hard-coded alignment current across all motors.
@@ -83,7 +83,7 @@ void brake_chopper_update(brake_chopper_t *brk, float32_t v_bus) {
 **Alternative (no brake resistor)**: Reduce the deceleration rate by limiting the speed controller's negative $I_q$ command so regenerated power stays within the bus capacitor's absorption limit. This is slower but requires no extra hardware.
 
 ### C. Stall / Blocked Rotor Detection
-- If the load completely jams, the current will saturate at maximum limits, but the rotor $\omega$ drops to zero. 
+- If the load completely jams, the current will saturate at maximum limits, but the rotor $\omega$ drops to zero.
 - In sensorless mode, zero speed = no BEMF = the SMO observer diverges wildly.
 - **Rule**: Detect stall from a sustained mismatch between torque-producing current and achieved speed or position. Use thresholds and time windows derived from the motor thermal time constant, expected load transients, and sensor resolution rather than relying on a universal current or RPM value.
 

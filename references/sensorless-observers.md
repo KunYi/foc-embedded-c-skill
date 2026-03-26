@@ -110,7 +110,7 @@ typedef struct {
  *        which equals Ψ·ω·sin(θ̂ - θe) and drives to zero at lock.
  */
 __attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void update_pll(
-    observer_pll_t * const pll, 
+    observer_pll_t * const pll,
     const float32_t e_alpha, const float32_t e_beta) {
 
     /* 1. Calculate sin/cos of estimated angle.
@@ -125,7 +125,7 @@ __attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inlin
     /* 3. Normalize error by BEMF amplitude to decouple PI gains from speed.
      *    This makes the PLL bandwidth approximately speed-independent. */
     const float32_t bemf_amp_sq = (e_alpha * e_alpha) + (e_beta * e_beta);
-    
+
     if (bemf_amp_sq > 0.01f) {
         angle_error /= sqrtf(bemf_amp_sq);
     } else {
@@ -171,7 +171,7 @@ Before transitioning from open-loop to closed-loop, the PLL must demonstrate con
  * @return true if observer is trustworthy, false if still converging.
  */
 __attribute__((always_inline)) static inline bool pll_is_converged(
-    const observer_pll_t * const pll, 
+    const observer_pll_t * const pll,
     const float32_t e_alpha, const float32_t e_beta,
     const float32_t cos_th, const float32_t sin_th) {
 
@@ -236,7 +236,7 @@ typedef struct {
     float32_t w_hfi;           /* Injection frequency [rad/s] */
     float32_t hfi_angle;       /* Accumulator for injection angle [rad] */
     float32_t dt;              /* Sample period [s] */
-    
+
     /* Filters for extracting the carrier frequency */
     float32_t iq_hpf_state;    /* HPF to remove fundamental current */
     float32_t err_lpf_state;   /* LPF to isolate the demodulated DC error */
@@ -247,7 +247,7 @@ typedef struct {
  *         Call this *after* the current-loop PI controllers have set Vd_target.
  */
 __attribute__((always_inline)) static inline float32_t hfi_inject(
-                                    hfi_observer_t * const hfi, 
+                                    hfi_observer_t * const hfi,
                                     const float32_t vd_base_cmd) {
     /* 1. Advance the injection angle oscillator */
     hfi->hfi_angle += hfi->w_hfi * hfi->dt;
@@ -272,7 +272,7 @@ If the electrical angle estimate ($\hat{\theta}$) is misaligned by an error $\De
  */
 __attribute__((section(".ramfunc")))
 float32_t hfi_demodulate(hfi_observer_t * const hfi, const float32_t iq_meas) {
-    
+
     /* 1. High-Pass Filter (HPF) the q-axis current to remove the DC/fundamental torque current.
      *    Example implementation: First-order HPF (y[n] = alpha * (y[n-1] + x[n] - x[n-1])) */
     /* [Simplified for conceptual reference - assume HPF function exists] */
@@ -285,8 +285,8 @@ float32_t hfi_demodulate(hfi_observer_t * const hfi, const float32_t iq_meas) {
     /* 3. Low-Pass Filter (LPF) to isolate the DC error tracking term. */
     const float32_t angle_error = lpf_process(&hfi->err_lpf_state, demodulated);
 
-    /* Note: The sign of angle_error relative to true ∆θ depends on motor polarity 
-     * (Ld < Lq) and injection axes. You may need to invert this signal to match 
+    /* Note: The sign of angle_error relative to true ∆θ depends on motor polarity
+     * (Ld < Lq) and injection axes. You may need to invert this signal to match
      * the positive-feedback convention of your PLL. */
     return angle_error;
     /* Send this angle_error directly to the PI integration step of your update_pll() */

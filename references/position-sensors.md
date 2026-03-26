@@ -102,16 +102,16 @@ void hall_angle_update(hall_interpolator_t *hall, float32_t dt) {
     /* Accumulate angle based on current speed */
     /* distance = speed * time */
     hall->theta_interpolated += hall->omega_e_radps * dt;
-    
+
     /* Clamp the interpolation. It should not exceed the next expected sector boundary
        otherwise it can overshoot when the rotor slows or stalls. */
-       
+
     float32_t max_angle_bound = hall->base_angle_rad + 1.04719755f; /* +60 degrees (PI/3) */
-    
+
     /* Account for reverse rotation checks similarly depending on speed sign */
     if (hall->omega_e_radps > 0) {
         if (hall->theta_interpolated > max_angle_bound) {
-             hall->theta_interpolated = max_angle_bound; 
+             hall->theta_interpolated = max_angle_bound;
         }
     }
 }
@@ -147,6 +147,6 @@ void hall_speed_on_transition(hall_speed_t *hs, uint32_t capture) {
 ## 3. Absolute SPI Encoders (Delay Compensation)
 Sensors like AS5048 or optical BISS-C update absolute positions via high-speed SPI.
 - **The Protocol Trap**: If SPI transfer plus sensor update latency is significant, the angle you receive is already old.
-- **Compensation**: Extrapolate the angle forward before Park transformation: 
+- **Compensation**: Extrapolate the angle forward before Park transformation:
   $\theta_{foc} = \theta_{spi} + (\omega_{rotor} \times T_{comm\_delay})$
 - **Practical note**: On STM32G4, SPI at 10 Mbps for a 16-bit transfer takes ~1.6 µs. The AS5048A internal processing adds ~10 µs. At 3000 RPM with 7 pole pairs, that's ~13° electrical delay — significant enough to degrade control at high speed.

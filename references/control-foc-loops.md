@@ -35,26 +35,26 @@ typedef struct {
  *        or similar fast-memory placement when the platform budget is tight.
  */
 __attribute__((section(".ramfunc")))
-void foc_current_update(foc_current_loop_t * const foc, 
-                        const float32_t id_ref, const float32_t iq_ref, 
-                        const float32_t id_meas, const float32_t iq_meas, 
+void foc_current_update(foc_current_loop_t * const foc,
+                        const float32_t id_ref, const float32_t iq_ref,
+                        const float32_t id_meas, const float32_t iq_meas,
                         const float32_t bus_voltage,
                         float32_t * const vd_out, float32_t * const vq_out) {
-                        
+
     /* 1. Calculate base PI voltages */
     const float32_t vd_pi = pi_update(&foc->pi_id, id_ref, id_meas);
     const float32_t vq_pi = pi_update(&foc->pi_iq, iq_ref, iq_meas);
-    
+
     /* 2. Feed-forward decoupling terms
      *    Pre-multiply omega_e once to save a cycle */
     const float32_t we = foc->omega_e;
     const float32_t vd_ff = -(we * foc->l_q * iq_meas);
     const float32_t vq_ff =  (we * foc->l_d * id_meas) + (we * foc->flux_link);
-    
+
     /* 3. Apply Decoupling */
     float32_t vd_target = vd_pi + vd_ff;
     float32_t vq_target = vq_pi + vq_ff;
-    
+
     /* 4. Voltage Limitation (Dynamic clamping based on Bus Voltage)
      *    Standard linear limit: V_max_linear = Vdc / sqrt(3)
      *    OVM limit (Hexagon peak): V_max_ovm = 2 * Vdc / 3
@@ -69,19 +69,19 @@ void foc_current_update(foc_current_loop_t * const foc,
 
     const float32_t v_max_sq = v_max * v_max;
     const float32_t v_sq = (vd_target * vd_target) + (vq_target * vq_target);
-    
+
     /* Use GCC unlikely constraint: saturation is the exception, not the rule */
     if (__builtin_expect(!!(v_sq > v_max_sq), 0)) {
         const float32_t scale = v_max / sqrtf(v_sq);
         vd_target *= scale;
         vq_target *= scale;
-        
+
         /* Anti-windup: when voltage saturates, the PI integrators must
          * be frozen or corrected. Feed back the saturation to prevent windup. */
     } else {
         /* Intentionally empty */
     }
-    
+
     *vd_out = vd_target;
     *vq_out = vq_target;
 }
@@ -109,10 +109,10 @@ __attribute__((always_inline)) static inline float32_t pi_update(
                                    pi_controller_t * const pi,
                                    const float32_t ref, const float32_t meas) {
     const float32_t error = ref - meas;
-    
+
     /* Proportional + Integral */
     float32_t output = (pi->kp * error) + pi->integrator;
-    
+
     /* Clamp output */
     if (__builtin_expect(!!(output > pi->out_max), 0)) {
         output = pi->out_max;
@@ -122,7 +122,7 @@ __attribute__((always_inline)) static inline float32_t pi_update(
         /* Only integrate when not saturated (conditional integration) */
         pi->integrator += pi->ki * error;
     }
-    
+
     return output;
 }
 ```
@@ -154,7 +154,7 @@ typedef struct {
 
 float32_t mtpa_lookup(const mtpa_lut_t * const lut, const float32_t iq_cmd) {
     const float32_t is_mag = fabsf(iq_cmd);  /* Simplified: assume Id_mtpa << Iq initially */
-    
+
     /* Linear interpolation across LUT */
     for (uint16_t i = 0u; i < (lut->size - 1u); i++) {
         if (is_mag <= lut->is_table[i + 1u]) {
@@ -212,7 +212,7 @@ void field_weakening_update(field_weakening_t * const fw,
     } else {
         /* Intentionally empty */
     }
-    
+
     if (id_fw > FOC_ZERO) {
         id_fw = FOC_ZERO;  /* FW only injects negative Id */
     } else {
@@ -255,10 +255,10 @@ Integral or derivative action can still be valid in servo applications, but only
 /**
  * @brief Position controller yielding a target Speed [rad/s]
  */
-float32_t foc_position_update(const float32_t pos_target, const float32_t pos_meas, 
+float32_t foc_position_update(const float32_t pos_target, const float32_t pos_meas,
                               const float32_t velocity_feedforward, const float32_t kp) {
     float32_t error = pos_target - pos_meas;
-    
+
     /* Shortest-path phase wrapping for rotary systems [-PI, PI] */
     if (error > FOC_PI) {
         error -= FOC_TWO_PI;
@@ -267,35 +267,35 @@ float32_t foc_position_update(const float32_t pos_target, const float32_t pos_me
     } else {
         /* Intentionally empty */
     }
-    
+
     const float32_t speed_cmd = (error * kp) + velocity_feedforward;
-    
+
     /* Clamp target speed to mechanical limits */
     return clamp_f32(speed_cmd, -MAX_OMEGA, MAX_OMEGA);
 }
 ```
 
 ### C. Speed Loop (PI Controller + Inertia Feed-Forward)
-The speed loop determines the $I_q$ torque request. During aggressive acceleration, waiting for the PI error to integrate to the required torque causes a massive following error (lag). 
+The speed loop determines the $I_q$ torque request. During aggressive acceleration, waiting for the PI error to integrate to the required torque causes a massive following error (lag).
 If you know the mechanical inertia ($J$) of the system, inject the torque required to accelerate the mass instantly.
 
 ```c
 /**
  * @brief Speed controller yielding a target Torque (I_q) [A]
  */
-float32_t foc_speed_update(pi_controller_t * const pi_spd, 
-                           const float32_t spd_target, const float32_t spd_meas, 
+float32_t foc_speed_update(pi_controller_t * const pi_spd,
+                           const float32_t spd_target, const float32_t spd_meas,
                            const float32_t accel_feedforward, const float32_t system_inertia_j) {
-                           
+
     /* Base PI torque request */
     const float32_t iq_pi = pi_update(pi_spd, spd_target, spd_meas);
-    
+
     /* Inertia (Torque) Feed-forward: T = J * alpha */
     /* Scale Torque to Current: Iq_ff = T_ff / Kt */
     const float32_t iq_ff = (accel_feedforward * system_inertia_j) * INV_MOTOR_KT;  /* precompute 1/Kt */
-    
+
     const float32_t iq_cmd = iq_pi + iq_ff;
-    
+
     return clamp_f32(iq_cmd, -MAX_CURRENT, MAX_CURRENT);
 }
 ```

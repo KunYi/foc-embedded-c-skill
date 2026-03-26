@@ -7,23 +7,25 @@ Use the numeric examples in this document as starting points only. Final values 
 
 ## 1. Shunt Resistor Physical Selection & PCB Layout
 
-**The Simulation Trap:** 
+**The Simulation Trap:**
 SIL assumes a shunt is a pure resistor. In reality, a physical SMD Shunt has Parasitic Inductance (ESL). High $di/dt$ switching currents cause $V_{noise} = ESL \times \frac{di}{dt}$ voltage spikes across the shunt, completely overriding your $I \times R$ signal.
 
 - **Resistor Choice**: Do not pick arbitrary current-sense parts without checking pulse handling, inductance, tolerance, and thermal drift. Strongly prefer low-ESL shunts and validate the parasitic behavior against your actual switching edges.
 - **Wattage & Resolution**: Trade-off. Higher resistance = better ADC clarity but hotter boards. Aim to utilize 80% of your OPAMP range at absolute peak hardware limit current to maximize dynamic range.
-- **Kelvin Connection (4-Wire Routing)**: The PCB traces fetching the Shunt voltage MUST route from the very inside pads of the resistor. If traces grab from the outside, solder resistance ruins calibration. 
+- **Kelvin Connection (4-Wire Routing)**: The PCB traces fetching the Shunt voltage MUST route from the very inside pads of the resistor. If traces grab from the outside, solder resistance ruins calibration.
 - **Trace Parallelism**: The differential traces (`Shunt+`, `Shunt-`) must route perfectly parallel and close together to cancel out EMI common-mode noise. **Keep them entirely isolated from Phase-node polygons.**
 
 ## 2. Noise Handling: Anti-Aliasing RC Filters and the Phase-Shift Dilemma
 
 You MUST place a hardware low-pass RC filter before the OPAMP to smooth out PWM switching noise.
-- **The Dilemma**: 
-  - Too small $R/C$: High frequency switching noise hits the ADC. 
+- **The Dilemma**:
+  - Too small $R/C$: High frequency switching noise hits the ADC.
   - Too large $R/C$: Delays the current signal! If your current loops delays by $5\mu s$ on a $20kHz$ loop, the d-q decoupling logic applies the counter-voltage to the WRONG electrical angle, causing instability.
 - **Rule of Thumb Constraint**: Start with a cut-off frequency high enough that analog delay remains a small fraction of the current-loop sample interval, then verify with scope data and closed-loop behavior. A multiple of the PWM frequency is a useful starting heuristic, not a substitute for measurement.
+- **Sampling-Edge Constraint**: Fast half-bridge transitions excite ringing on the switch node, shunt, and amplifier input network. Do not place the ADC sample on or immediately adjacent to a PWM edge. The required keep-out margin is board-dependent and must be measured on the real power stage.
+- **Kelvin + Filter Co-Design**: The RC filter only works as intended when the sensed voltage is actually the shunt voltage. Kelvin pickup points and tightly coupled differential routing matter as much as the filter values; a poor pickup layout turns the filter into a cleaner view of the wrong signal.
 
-## 3. Shunt Topologies 
+## 3. Shunt Topologies
 
 ### A. Three-Shunt Phase Sensing (Low-Side)
 - One shunt on each of the three low-side FET source/ground returns.
@@ -133,7 +135,27 @@ __attribute__((always_inline)) static inline void svpwm_clamp_duty(
 - **Advantage**: Zero blind spots. Independent of PWM state.
 - **Pain Point**: Expensive. Highly susceptible to common-mode voltage transients (dv/dt jumping from 0 to bus voltage). Wait until the ringing stops before triggering the ADC.
 
-## 4. Topology Selection Guide
+## 4. Hardware Constraints That Software Must Respect
+
+When generating code, prefer these physical constraints over fixed code templates:
+
+- **ADC ringing keep-out**: The current sample must be taken only after switch-node ringing, reverse-recovery spikes, and amplifier settling have decayed enough that the measured current is repeatable.
+- **Minimum valid sample window**: For low-side shunts, software must guarantee enough contiguous conduction time for shunt voltage to settle, the amplifier to recover, and the ADC acquisition window to complete.
+- **Bootstrap refresh limit**: If the gate driver uses bootstrap capacitors, software must not hold a high-side device on so long that the bootstrap supply droops below the driver's guaranteed operating range.
+- **Kelvin integrity**: Current calibration is only meaningful if the differential pickup is routed from the shunt's true sense points rather than the high-current copper path.
+- **Ground bounce awareness**: MCU analog ground, shunt return, and gate-drive current return must be laid out so switching current does not modulate the measurement reference seen by the ADC or op-amp.
+
+## 5. Manual Verification and Acceptance Criteria
+
+Use bench verification to prove the implementation matches the physical system:
+
+- **Oscilloscope verification**: Probe PWM edge timing, gate signals, shunt-amplifier output, and ADC trigger timing. Confirm the trigger lands inside a flat and repeatable current-measurement window rather than on a ringing transient.
+- **Kelvin-routing verification**: Compare the sensed shunt waveform at the amplifier input versus directly across the shunt sense pads. Large mismatch indicates routing or return-current contamination.
+- **Noise acceptance**: With the motor phase held at a known current or at zero-current idle, verify the ADC sample-to-sample noise and offset remain below the budget required for current-loop stability and zero-crossing decisions.
+- **Duty-limit acceptance**: At the maximum commanded duty, verify both the current-sampling window and any bootstrap-powered gate-drive rails remain within safe operating margins.
+- **Reconstruction acceptance**: For 2-shunt and 1-shunt systems, compare reconstructed phase currents against a trusted current probe or a lower-speed validation mode. The reconstruction error must stay bounded across sectors and near duty extremes.
+
+## 6. Topology Selection Guide
 
 | Criteria | 3-Shunt | 2-Shunt | 1-Shunt | Inline |
 |----------|---------|---------|---------|--------|

@@ -8,7 +8,7 @@ The amplitudes, frequencies, and bandwidth examples in this document are commiss
 ## 1. Stator Resistance ($R_s$) Measurement
 Resistance is purely resistive; you must eliminate inductance ($di/dt$) and Back-EMF ($\omega_e$) from the equation.
 
-- **Procedure**: 
+- **Procedure**:
   1. Hold the rotor completely at standstill ($\omega_e = 0$).
   2. Command a pure DC D-axis current with `I_q_cmd = 0A`. Start from a conservative current that is large enough to rise above ADC noise but comfortably below thermal and magnetic saturation limits.
   3. Wait for the PI loop to settle (so $di/dt = 0$).
@@ -26,7 +26,7 @@ Inductance resists changes in current. High-frequency voltage injection removes 
   3. Sample the peak-to-peak current ripple $\Delta I_d$.
   4. Repeat the process for the Q-axis to find $L_q$.
 - **Formula**: $L \approx \frac{V_{inject\_peak}}{\Delta I_{ripple}} \times \Delta t$
-- **Rotor Saliency Detection**: 
+- **Rotor Saliency Detection**:
   - If $L_d \approx L_q$, the motor is Surface-Mounted PM (SPM).
   - If $L_q > L_d$ (often $1.5\sim3$ times), the motor is Interior PM (IPM), and you MUST enable MTPA (Maximum Torque Per Ampere) formulas.
 
@@ -59,20 +59,20 @@ Once you discover $R_s$ and $L_q, L_d$, you can derive a strong first-pass PI de
  *   Conservative: BW ≤ 2 kHz  → bandwidth_rads ≈ 12566 rad/s
  *   Aggressive:   BW ≤ 4 kHz  → bandwidth_rads ≈ 25133 rad/s
  */
-void calculate_current_pi_gains(float32_t r_s, float32_t l_d, float32_t l_q, 
-                                float32_t bandwidth_rads, 
+void calculate_current_pi_gains(float32_t r_s, float32_t l_d, float32_t l_q,
+                                float32_t bandwidth_rads,
                                 pi_controller_t *pi_id, pi_controller_t *pi_iq) {
-    
+
     /* Zero-Pole Cancellation technique (continuous domain) */
-    
+
     /* D-axis Controller */
     pi_id->kp = l_d * bandwidth_rads;
     pi_id->ki = r_s * bandwidth_rads;
-    
+
     /* Q-axis Controller */
     pi_iq->kp = l_q * bandwidth_rads;
     pi_iq->ki = r_s * bandwidth_rads;
-    
+
     /* Set output limits to ±Vdc/sqrt(3) or leave for the circle limiter */
     /* pi_id->out_max = v_bus_max * 0.577f; */
     /* pi_id->out_min = -pi_id->out_max; */
@@ -93,8 +93,8 @@ For more advanced tuning that accounts for sampling delay explicitly:
 These require motion limit testing and cannot be measured at standstill via simple injection.
 
 - **Open-Loop Start**: To find them, force the system to spin using an Open-Loop `V/f` (Volts per Hertz) profile. Output a rotating voltage vector slowly ramping its frequency and amplitude until the rotor spins at a steady RPM without stalling.
-- **Pole Pairs (P)**: 
-  - If a mechanical sensor (Encoder/Hall) is equipped, spin $1$ mechanical revolution and count the number of electrical cycles ($\theta_e$ phase-wraps) executed on the stator variables. 
+- **Pole Pairs (P)**:
+  - If a mechanical sensor (Encoder/Hall) is equipped, spin $1$ mechanical revolution and count the number of electrical cycles ($\theta_e$ phase-wraps) executed on the stator variables.
   - Formula: $P = \frac{\#\text{ Electrical Cycles}}{1\text{ Mechanical Rev}}$
 - **Flux Linkage ($\Psi$)**:
   - Let the Sliding Mode Observer (SMO) estimate the Back-EMF components $E_\alpha, E_\beta$ during the Open-Loop spin.

@@ -37,9 +37,9 @@ This formulation determines the sector by computing projections that are algebra
  * Convention: Amplitude-invariant Clarke. Input V_alpha/V_beta are in volts.
  */
 __attribute__((always_inline)) static inline void svpwm_generate(
-                    const float32_t v_alpha, const float32_t v_beta, const float32_t v_dc, 
+                    const float32_t v_alpha, const float32_t v_beta, const float32_t v_dc,
                     float32_t * const duty_u, float32_t * const duty_v, float32_t * const duty_w) {
-                    
+
     /* 1. Calculate Phase Projections X, Y, Z */
     const float32_t sqrt3_v_beta = FOC_SQRT3 * v_beta;
     const float32_t X = v_beta;
@@ -50,8 +50,8 @@ __attribute__((always_inline)) static inline void svpwm_generate(
     const uint8_t a = (X > FOC_ZERO) ? 1u : 0u;
     const uint8_t b = (Y > FOC_ZERO) ? 1u : 0u;
     const uint8_t c = (Z > FOC_ZERO) ? 1u : 0u;
-    
-    static const uint8_t sector_map[8] = {0u, 2u, 6u, 1u, 4u, 3u, 5u, 0u}; 
+
+    static const uint8_t sector_map[8] = {0u, 2u, 6u, 1u, 4u, 3u, 5u, 0u};
     const uint8_t sector = sector_map[(a << 2u) | (b << 1u) | c];
 
     /* 3. Calculate Active Vector times T1, T2 */
@@ -204,7 +204,7 @@ __attribute__((always_inline)) static inline float32_t svpwm_dead_time_compensat
     } else if (i_meas < -i_threshold) {
         v_comp = -v_dead_comp;
     } else {
-        /* Linearly interpolate through the zero-crossing to prevent acoustic noise 
+        /* Linearly interpolate through the zero-crossing to prevent acoustic noise
            caused by the sign() flip triggering back and forth on AD noise. */
         v_comp = v_dead_comp * (i_meas / i_threshold);
     }

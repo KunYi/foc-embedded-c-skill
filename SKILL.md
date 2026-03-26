@@ -17,7 +17,14 @@ This skill is optimized primarily for STM32G4-class PMSM and BLDC drives. Adapt 
 
 ### 1. Analyze System Boundaries Before Writing Code
 
-When user requirements are incomplete, act as a **Pair Programmer** and explicitly ask a decision-tree question rather than randomly injecting standard libraries.
+When user requirements are incomplete, act as a **Pair Programmer** and explicitly ask a short decision-tree question rather than randomly injecting standard libraries or dumping a generic control template.
+
+If critical runtime context is missing, do NOT assume it away. Ask a concise question that directly changes the implementation path, for example:
+- "What is your PWM switching frequency?"
+- "Are we constrained to an ISR budget below 5 us?"
+- "Is this 1-shunt, 2-shunt, 3-shunt, or inline current sensing?"
+- "Do you have a real position sensor, or must startup be sensorless?"
+- "Is the maximum duty limited by bootstrap refresh requirements or minimum current-sampling windows?"
 
 Key Context Required:
 - **MCU model**: (e.g., STM32G4xx)
@@ -37,6 +44,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - Prioritize decoupling control (Cross-coupling decoupling) in the dq-frame.
 - Make protection (Overcurrent via COMP→TIM_BRK, Overvoltage, Stall) higher priority than speed/position tracking.
 - **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Account for dead-time current distortion in all modulation code — during initial bring-up, verify baseline behavior before enabling compensation. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
+- **Hardware Constraints First**: Prefer physical boundary conditions over canned code recipes. Examples: avoid ADC sampling during PWM-edge ringing, enforce minimum valid current-sampling windows, respect bootstrap refresh duty limits, and preserve comparator/gate-driver shutdown margins.
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Acceleration Philosophy**: Treat CORDIC and FMAC as first-class optimization tools, not dogma. On STM32G4 FOC projects, CORDIC is usually relevant and FMAC is often relevant because current, speed, observer, sensor, and compensator paths frequently include filtering. Use them when they improve real-time behavior without creating unacceptable observability, scaling, or safety-validation risk.
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
@@ -48,7 +56,7 @@ When a user requests motor drive code or debugging analysis, use the following d
 
 1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, and PWM Frequency. If not, stop and ASK.
 2. **Parameter Identification**: Check if motor parameters are known. If not, guide through Auto-Tuning (see `auto-tuning-identification.md`).
-3. **Establish Physical Limits**: Before writing any math, use `view_file` to read `stm32g4-foc-hardware.md` and `current-sensing-topology.md` to understand the ADC synchronization, dead-time, and PCB routing constraints.
+3. **Establish Physical Limits**: Before writing any math, read `stm32g4-foc-hardware.md` and `current-sensing-topology.md` to understand the ADC synchronization, dead-time, ringing, Kelvin routing, bootstrap, and PCB routing constraints.
 4. **Select Control Method**: Based on motor type and BEMF profile:
    - **Sinusoidal BEMF (PMSM)** → Sinusoidal FOC (this skill's primary focus)
    - **Trapezoidal BEMF (true BLDC)** → Consider six-step commutation (`bldc-six-step.md`)
@@ -57,7 +65,7 @@ When a user requests motor drive code or debugging analysis, use the following d
 6. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
 7. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
 8. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
-9. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics (e.g., DAC probe points).
+9. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -81,6 +89,15 @@ AI should consult the following domain-specific references when working on the c
 Instead of only outputting static C code, you MUST provide explicit physical verification limits or acceptance criteria for the generated design:
 - Tell the user exactly what to measure on the oscilloscope (e.g., "Map the estimated `theta_el` and the actual Hall sensor `theta` to DAC channels. They should overlap with minimal phase lag at maximum RPM").
 - Highlight physical analog constraints directly related to the code (e.g., "ADC triggering MUST be tied to a verified valid current-sampling instant such as a carefully placed `CCR4/TRGO2` event, explicitly avoiding phase-node ringing. The minimum pulse width constraint must be respected in 1-shunt implementations.").
+- State the constraint in physics-first language when possible, not only as a register recipe (e.g., "High di/dt switching causes ringing at the phase node; place the ADC sample at least the measured ringing-settle margin away from PWM edges" or "Bootstrap-powered high-side drivers may lose gate drive if duty is held too close to 100 percent; software must clamp maximum duty accordingly.").
+- Explain how the user can verify saturation or windup behavior on real hardware (for example by DAC-exporting the PI integrator state or logging it during commanded saturation).
+
+### Verification Plan
+
+Every substantial code answer should include a short manual verification plan:
+- **Manual Verification**: what to probe with scope, DAC, or logged telemetry.
+- **Pass Criteria**: what measured behavior is acceptable.
+- **Failure Clues**: what waveform, timing, or thermal symptom suggests the code is violating a hardware limit.
 
 ## Output Expectations
 
@@ -89,3 +106,4 @@ When providing implementation guidance, prefer this response structure unless th
 - Distinguish hard safety or physics constraints from platform-specific implementation preferences.
 - Explain why CORDIC, FMAC, plain FPU code, or a mixed strategy was chosen.
 - Include bench validation guidance, not just static code.
+- When code shape is flexible, prefer acceptance criteria over unnecessary code templating: define what the implementation must satisfy on the real board even if multiple software structures are valid.
