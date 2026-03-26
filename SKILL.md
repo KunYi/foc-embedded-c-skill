@@ -80,7 +80,7 @@ AI should consult the following domain-specific references when working on the c
 
 Instead of only outputting static C code, you MUST provide explicit physical verification limits or acceptance criteria for the generated design:
 - Tell the user exactly what to measure on the oscilloscope (e.g., "Map the estimated `theta_el` and the actual Hall sensor `theta` to DAC channels. They should overlap with minimal phase lag at maximum RPM").
-- Highlight physical analog constraints directly related to the code (e.g., "ADC injection MUST be scheduled at the TIM1 TRGO valley, explicitly avoiding ringing from the phase node switching. The minimum pulse width constraint must be respected in 1-shunt implementations").
+- Highlight physical analog constraints directly related to the code (e.g., "ADC triggering MUST be tied to a verified valid current-sampling instant such as a carefully placed `CCR4/TRGO2` event, explicitly avoiding phase-node ringing. The minimum pulse width constraint must be respected in 1-shunt implementations.").
 
 ## Output Expectations
 

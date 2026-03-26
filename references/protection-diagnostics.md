@@ -1,158 +1,256 @@
-# Protection & Diagnostics ($I^2t$ Overload Modeling) (Reference)
+# Protection & Diagnostics (Overload Estimation and Thermal Derating) (Reference)
 
 ## Overview
 
-Industrial and automotive drives do not simply trip a fault the instant phase current exceeds the nominal rating. Motors and inverters have significant **thermal mass**. An ideal protection system allows massive short-term overload (peak torque) for heavy acceleration, but dynamically pulls back the current limit or trips if the overcurrent is sustained too long.
+Industrial and automotive drives do not simply trip a fault the instant phase current exceeds the nominal rating. Motors and inverters have significant thermal inertia. A practical protection system allows short-term overload for acceleration or transient load steps, then derates or trips if the overload is sustained.
 
-We model this thermal energy accumulation using an **$I^2t$ (Ampere-squared-second)** algorithm.
+This document distinguishes between two different levels of protection logic:
+
+- **`I^2t` overload estimator**: A practical heuristic that integrates current-related stress over time. It is simple, cheap, and very useful, but it is **not** a full physical temperature model.
+- **Thermal state estimation**: A higher-fidelity model that attempts to estimate winding, inverter, or magnet temperature using calibrated thermal parameters and, ideally, measured temperatures.
+
+For most embedded motor drives, start with `I^2t` plus measured temperature thresholds. Upgrade to a fuller thermal observer only when the product, duty cycle, or certification requirements justify the extra complexity.
 
 ---
 
-## 1. The $I^2t$ Thermal Integrator (Leaky Bucket)
+## 1. What `I^2t` Is and Is Not
 
-The $I^2t$ algorithm acts like a bucket of heat. 
-- **Heat enters** at a rate proportional to $I_{measured}^2$.
-- **Heat leaves** at a rate proportional to $I_{nominal}^2$ (the motor's continuous cooling capacity).
-- **The bucket fills up** if $I_{measured} > I_{nominal}$.
-- **The bucket empties** (cools down) if $I_{measured} < I_{nominal}$, eventually bottoming out at zero.
-- If the bucket reaches its maximum capacity ($I^2t_{max}$ limit), the system must trip or aggressively derate the torque.
+The `I^2t` algorithm is best understood as a **conservative overload budget**, not a literal thermal simulation.
 
-### C11 / MISRA Compliant Implementation
+- **What it captures well**: Sustained overload is more dangerous than short bursts, and copper heating grows roughly with current squared.
+- **What it does not capture well**: True cooling dynamics, ambient temperature, airflow, inverter switching loss, iron loss, temperature-dependent winding resistance, and separate thermal masses for motor and power stage.
 
-Because thermal time constants are long (seconds to minutes), this algorithm does NOT need to run in the high-frequency 20kHz ISR. It should run in a background task or a slow 1kHz timer tick.
+That means:
+
+- `I^2t` is excellent for **protection and derating**.
+- `I^2t` alone is not enough to claim you know the **actual motor temperature**.
+
+### Practical Interpretation
+
+Think of `I^2t` as a bucket of allowable overload energy:
+
+- The bucket fills when current exceeds what the system can continuously sustain.
+- The bucket empties when thermal stress falls below the continuous capability.
+- When the bucket gets too full, the drive derates or trips.
+
+This is a good product strategy because it is simple, deterministic, and robust even when direct temperature sensing is unavailable or noisy.
+
+---
+
+## 2. `I^2t` Overload Estimator
+
+### Recommended Use
+
+Use `I^2t` when you need:
+
+- short-term peak torque without immediate nuisance trips
+- deterministic derating behavior
+- a fallback protection path even if temperature sensors are missing or faulty
+
+Run it in a slow loop such as `1 kHz`, not in the high-frequency current ISR.
+
+### C11 / MISRA-Friendly Reference Implementation
 
 ```c
 #include <stdint.h>
-#include <stdbool.h>
 
-/* --- Motor Thermal Specifications (Example Context) --- */
-/* Nominal RMS current the motor can sustain indefinitely without overheating */
-#define I_NOMINAL          (10.0f)
-#define I_NOMINAL_SQ       (I_NOMINAL * I_NOMINAL)
-
-/* Peak RMS current allowed for short bursts */
-#define I_PEAK             (30.0f)
-
-/* Maximum thermal energy accumulation before tripping.
- * Typical definition: How long can the motor sustain I_PEAK? 
- * I2t_MAX = (I_PEAK^2 - I_NOMINAL_SQ) * MAX_PEAK_TIME_SEC 
- * Example: 30A limit for 3 seconds over a 10A nominal rating */
-#define I2T_MAX_CAPACITY   ((I_PEAK * I_PEAK - I_NOMINAL_SQ) * 3.0f)
-
-/* Zero clamping boundary for the integrator */
-#define FOC_ZERO           (0.0f)
+#define FOC_ZERO        (0.0f)
+#define I_NOMINAL       (10.0f)
+#define I_PEAK          (30.0f)
+#define I_NOMINAL_SQ    (I_NOMINAL * I_NOMINAL)
+#define I2T_MAX_CAP     ((I_PEAK * I_PEAK - I_NOMINAL_SQ) * 3.0f)
 
 typedef struct {
-    float32_t accumulator;   /* Current accumulated thermal energy [A^2.s] */
-    float32_t threshold;     /* Trip threshold limit [A^2.s] */
-    float32_t warning_level; /* Warning threshold (e.g. 80% of limit) for soft-rollback */
-    float32_t dt;            /* Execution period of this algorithm [s] (e.g., 0.001f for 1kHz) */
+    float32_t accumulator;   /* Overload budget usage [A^2.s] */
+    float32_t threshold;     /* Trip threshold [A^2.s] */
+    float32_t warning_level; /* Derating threshold [A^2.s] */
+    float32_t dt;            /* Update period [s] */
 } i2t_model_t;
 
-/**
- * @brief Initialize the I2t thermal model.
- */
 void i2t_init(i2t_model_t * const i2t) {
     i2t->accumulator = FOC_ZERO;
-    i2t->threshold = I2T_MAX_CAPACITY;
-    i2t->warning_level = I2T_MAX_CAPACITY * 0.8f;
-    i2t->dt = 0.001f; /* Assuming 1ms update rate */
+    i2t->threshold = I2T_MAX_CAP;
+    i2t->warning_level = I2T_MAX_CAP * 0.8f;
+    i2t->dt = 0.001f;
 }
 
 /**
- * @brief  Update the fundamental thermal accumulator.
- *         Call this at a fixed low-frequency interval (e.g. 1kHz).
- * @param  i_q: Measured torque-producing current (or total magnitude sqrt(Id^2+Iq^2)).
- * @return status: 0 = Normal, 1 = Warning (Rollback requested), 2 = Tripped (Fault)
+ * @brief Update overload estimator from current magnitude.
+ *
+ * @param i_mag  Use total stator current magnitude when available:
+ *               sqrt(Id^2 + Iq^2) or a calibrated RMS proxy.
+ *               Using Iq alone is only acceptable if Id is known to remain small.
+ *
+ * @return 0 = normal, 1 = warning/derate, 2 = trip
  */
-uint8_t i2t_update(i2t_model_t * const i2t, const float32_t i_q) {
-    
-    /* Using Iq squared as the heat proxy. For FW systems, use (Id^2 + Iq^2). */
-    const float32_t i_sq = (i_q * i_q);
-    
-    /* Calculate thermal power delta. 
-     * Positive = heating up. Negative = cooling down. */
-    const float32_t heat_delta = (i_sq - I_NOMINAL_SQ) * i2t->dt;
-    
-    /* Integrate */
-    i2t->accumulator += heat_delta;
-    
-    /* Floor the accumulator at zero (ambient cooling equilibrium) */
+uint8_t i2t_update(i2t_model_t * const i2t, const float32_t i_mag) {
+    const float32_t i_sq = i_mag * i_mag;
+
+    /* Simple overload budget:
+     * above nominal -> bucket fills
+     * below nominal -> bucket empties */
+    const float32_t delta = (i_sq - I_NOMINAL_SQ) * i2t->dt;
+    i2t->accumulator += delta;
+
     if (i2t->accumulator < FOC_ZERO) {
         i2t->accumulator = FOC_ZERO;
     } else {
         /* Intentionally empty */
     }
-    
-    /* Evaluate state */
+
     if (i2t->accumulator >= i2t->threshold) {
-        return 2u; /* TRIP FAULT */
+        return 2u;
     } else if (i2t->accumulator >= i2t->warning_level) {
-        return 1u; /* WARNING (DERATE TRIGGER) */
+        return 1u;
     } else {
-        return 0u; /* NORMAL */
+        return 0u;
     }
 }
 ```
+
+### Important Limits of This Model
+
+- It is **not** a physical winding-temperature estimator.
+- The cooling term is only an engineering heuristic.
+- The thresholds must be calibrated from real thermal tests, not chosen from current ratings alone.
 
 ---
 
-## 2. Dynamic Torque Rollback (Derating)
+## 3. Dynamic Torque Rollback (Derating)
 
-Instead of brutally shutting down the motor when it gets close to overheating, a world-class drive performs a **Soft Rollback** (Derating). When the $I^2t$ accumulator crosses the warning threshold, the maximum allowed $I_q$ command in the speed loop is dynamically linearly restricted.
+Instead of hard-tripping as soon as the estimator approaches its limit, product-grade drives usually derate first.
 
 ```c
-/**
- * @brief  Calculate a dynamic torque limit based on the I2t thermal state.
- *         This output feeds into the MAX_CURRENT clamp of the Speed PI controller.
- *
- * @param i2t   The I2t model instance.
- * @return      The dynamically allowed maximum Iq current.
- */
 float32_t i2t_get_dynamic_limit(const i2t_model_t * const i2t) {
-    
-    /* If perfectly cool, we allow the absolute peak burst limit. */
     if (i2t->accumulator < i2t->warning_level) {
         return I_PEAK;
-    } 
-    /* If we have exceeded the final threshold, we must be at 0A (fault state handles this)
-     * but we clamp it math-wise here defensively. */
-    else if (i2t->accumulator >= i2t->threshold) {
+    } else if (i2t->accumulator >= i2t->threshold) {
         return FOC_ZERO;
-    } 
-    /* We are between 80% (Warning) and 100% (Trip).
-     * Linearly ramp down the allowed current from I_PEAK back down to I_NOMINAL. */
-    else {
+    } else {
         const float32_t range = i2t->threshold - i2t->warning_level;
         const float32_t excess = i2t->accumulator - i2t->warning_level;
-        
-        /* ratio goes from 0.0 (at warning) to 1.0 (at trip limit) */
         const float32_t ratio = excess / range;
-        
-        /* Linearly squeeze the limit from I_PEAK down to I_NOMINAL */
-        const float32_t dynamic_limit = I_PEAK - (ratio * (I_PEAK - I_NOMINAL));
-        
-        return dynamic_limit;
+        return I_PEAK - (ratio * (I_PEAK - I_NOMINAL));
     }
 }
 ```
 
-### Integration with `control-foc-loops.md`
+Use this output to limit the speed-loop or torque-loop current command rather than waiting for a final trip.
 
-In your speed loop function, instead of using a hardcoded `#define MAX_CURRENT`:
+### Integration Guidance
+
+- Clamp the outer-loop current request, not only the final PWM duty.
+- Derating should be monotonic and predictable.
+- Log the `I^2t` state for service diagnostics and field returns.
+
+---
+
+## 4. Measured Temperature Fusion
+
+For product-level drives, `I^2t` should usually be combined with real temperature sensing:
+
+- **Motor winding sensor**: NTC/PTC in the stator, if available
+- **Power-stage sensor**: MOSFET, module, or heatsink NTC
+- **PCB sensor**: local board temperature near the inverter
+
+### Recommended Strategy
+
+- Use `I^2t` as the **fast policy estimator for cumulative overload**
+- Use measured temperature as the **ground truth safety limiter**
+- Trip or derate on whichever condition is more conservative
+
+### Example Fusion Policy
 
 ```c
-/* Example insertion in foc_speed_update() */
-const float32_t active_i_max = i2t_get_dynamic_limit(&g_i2t_model);
+typedef struct {
+    float32_t motor_temp_c;
+    float32_t inverter_temp_c;
+    float32_t motor_warn_c;
+    float32_t motor_trip_c;
+    float32_t inverter_warn_c;
+    float32_t inverter_trip_c;
+} temp_limits_t;
 
-/* Clamp the speed PI output */
-const float32_t iq_cmd = pi_update(&pi_spd, spd_target, spd_meas) + iq_ff;
-return clamp_f32(iq_cmd, -active_i_max, active_i_max);
+uint8_t thermal_supervisor(const i2t_model_t * const i2t,
+                           const temp_limits_t * const tlim) {
+    const uint8_t i2t_state = (i2t->accumulator >= i2t->threshold) ? 2u :
+                              (i2t->accumulator >= i2t->warning_level) ? 1u : 0u;
+
+    if ((tlim->motor_temp_c >= tlim->motor_trip_c) ||
+        (tlim->inverter_temp_c >= tlim->inverter_trip_c)) {
+        return 2u;
+    }
+
+    if ((tlim->motor_temp_c >= tlim->motor_warn_c) ||
+        (tlim->inverter_temp_c >= tlim->inverter_warn_c) ||
+        (i2t_state == 1u)) {
+        return 1u;
+    }
+
+    return i2t_state;
+}
 ```
 
-### Protection Hierarchy
+### Why This Is Better
 
-A world-class drive uses a triple-layered defense:
-1.  **Hardware Break (Zero-cycle)**: Internal Analog `COMP` $\rightarrow$ `TIM1_BRK`. Triggers instantly beyond absolute max hardware limits (e.g., $50A$ short circuit).
-2.  **Software Peak Limit (Current Loop)**: Clamps the reference in `foc_current_update` and verifies ADC readings against software safety limits. Triggers in ~50µs.
-3.  **Thermal Integrator ($I^2t$)**: Evaluates time-over-current. Triggers in seconds to minutes. Protects stator varnish and limits average switching thermal stress.
+- `I^2t` catches overload early even before a sensor warms up
+- Temperature sensors catch real thermal stress that current alone does not model
+- The combination is much closer to product-grade behavior than either alone
+
+---
+
+## 5. Calibration Workflow
+
+This is the missing step in many control projects: protection logic is only as good as its calibration.
+
+### Minimum Calibration Process
+
+1. Define continuous current, peak current, and allowed peak duration targets.
+2. Run controlled overload tests at multiple ambient temperatures.
+3. Measure:
+   - winding temperature rise
+   - inverter/heatsink temperature rise
+   - time to thermal steady state
+   - time to critical threshold
+4. Tune:
+   - `I_NOMINAL`
+   - `I_PEAK`
+   - `I2T_MAX_CAP`
+   - warning threshold
+   - derating slope
+5. Re-validate under:
+   - low speed / stalled airflow
+   - field weakening
+   - regenerative braking
+   - repeated acceleration cycles
+
+### Product-Level Notes
+
+- Calibrate motor and inverter protection separately if their safe operating limits differ materially.
+- If winding resistance rises strongly with temperature, your `I^2t` thresholds may need temperature-dependent adjustment.
+- If the cooling system changes by product variant, the calibration must change too.
+
+---
+
+## 6. Hardware Validation Checklist
+
+To claim the overload/thermal protection is product-ready, verify these on real hardware:
+
+- Apply repeated peak-torque pulses and confirm derating begins before measured temperatures exceed warning thresholds.
+- Hold continuous overload and confirm trip occurs before winding or inverter temperature exceeds absolute safe limits.
+- Compare `I^2t` accumulator shape against measured temperature rise over time. They do not need to match numerically, but they should correlate in trend and trigger order.
+- Verify recovery behavior: after cooling, allowed torque should return smoothly without chatter.
+- Verify sensor-fault fallback: if the temperature sensor opens/shorts, `I^2t` should still provide a conservative backup path.
+- Verify logging: store cause of derating/trip (`I^2t`, motor temp, inverter temp, combined fault) for diagnostics.
+
+---
+
+## 7. Protection Hierarchy
+
+A product-grade drive typically uses at least three protection layers:
+
+1. **Hardware break path**: comparator to timer break for absolute short-circuit or catastrophic current events
+2. **Fast software current supervision**: current-loop clamps and ADC plausibility checks
+3. **Slow thermal supervision**: `I^2t`, measured temperatures, and derating policy
+
+This layered design is what turns a mathematically good controller into a reliable product.

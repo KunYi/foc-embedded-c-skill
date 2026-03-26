@@ -5,12 +5,12 @@ This document transforms $V_\alpha$ and $V_\beta$ target voltages from the Inver
 
 Treat the code here as a reference implementation shape, not the only acceptable realization. Final modulation choice must consider current-sensing windows, dead-time effects, minimum pulse width, EMC, switching loss, and hardware protection behavior.
 
-**Convention**: This implementation assumes the **amplitude-invariant** Clarke transform ($\frac{2}{3}$ scaling). The maximum inscribed circle voltage amplitude in the linear modulation region is $V_{max} = \frac{V_{dc}}{\sqrt{3}}$.
+**Convention**: This implementation assumes the **amplitude-invariant** Clarke transform ($\frac{2}{3}$ scaling). In that convention, the commanded stationary-frame voltage vector magnitude satisfies $|\vec{V}_{\alpha\beta}| \le \frac{V_{dc}}{\sqrt{3}}$ in the linear modulation region.
 
 ## 1. Mathematical Bounds (Linear vs Hexagon)
 Given a DC Bus voltage $V_{dc}$, the voltage vector magnitude must satisfy $|\vec{V}| \le \frac{V_{dc}}{\sqrt{3}}$ to remain in the linear modulation zone (circle inscribed in the hexagon). Exceeding this boundary means over-modulation: the output voltage waveform clips against the hexagon edges, introducing harmonic distortion.
 
-The full hexagon boundary allows up to $\frac{2}{3} V_{dc}$ peak fundamental on the phase, but only at the cost of low-order harmonics.
+The full hexagon boundary corresponds to a maximum stationary-frame reference vector magnitude of $\frac{2}{3}V_{dc}$. Driving beyond the inscribed circle toward this boundary enters overmodulation and trades waveform purity for more output voltage. Be explicit about which quantity you mean when discussing limits: phase fundamental, line-line fundamental, and $\alpha\beta$ vector magnitude are not interchangeable.
 
 ## 2. 7-Segment Center-Aligned SVPWM
 

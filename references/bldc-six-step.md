@@ -7,7 +7,7 @@ Six-step (trapezoidal) commutation is the simplest and most common control metho
 | Aspect | Six-Step | Sinusoidal FOC |
 |--------|----------|----------------|
 | BEMF shape | Trapezoidal | Sinusoidal |
-| Commutation | 6 discrete states / revolution | Continuous |
+| Commutation | 6 discrete states / electrical revolution | Continuous |
 | Current waveform | Quasi-square | Sinusoidal |
 | Torque ripple | Higher (~15% inherent) | Very low |
 | MCU cost | Low (simple timer + comparators) | Higher (fast ADC + trig) |
@@ -153,6 +153,13 @@ When Hall sensors are not available, the back-EMF zero-crossing on the floating 
 
 ### STM32G4 Comparator-Based Detection
 
+Real hardware requires more than the idealized zero-crossing logic shown below:
+
+- **Blanking time after commutation**: Suppress zero-crossing detection for a short window after each commutation edge so PWM ringing and diode recovery do not create false events.
+- **Comparator hysteresis**: Add enough hysteresis to reject high-frequency switching noise on the floating phase.
+- **Input filtering**: RC filtering or digital validation may be required, but too much filtering shifts the commutation point and reduces efficiency.
+- **Virtual neutral accuracy**: If using `Vbus/2` instead of a true virtual neutral reconstruction, verify the offset error over the operating voltage range.
+
 ```c
 /**
  * @brief BEMF zero-crossing detection using STM32G4 internal COMP.
@@ -204,6 +211,16 @@ At standstill, there is no BEMF. A blind startup sequence is required:
 1. **Alignment**: Apply a known vector to pull the rotor to a known position (same as FOC alignment).
 2. **Forced commutation**: Step through the commutation table at a fixed, slowly increasing frequency until enough BEMF is generated for zero-crossing detection.
 3. **Transition to sensorless**: Once the first valid zero-crossing is detected, switch to BEMF-based commutation timing.
+
+### Hardware Validation Checklist
+
+To verify six-step commutation on real hardware:
+
+- Scope the floating-phase BEMF, comparator output, and commanded commutation instant on the same timebase.
+- Verify that blanking time suppresses the switching transient but does not mask the true zero-crossing.
+- Confirm the 30-degree delay remains accurate across low, medium, and high electrical speed.
+- Verify commutation remains correct during rapid acceleration, load release, and reverse rotation.
+- Measure current spikes and acoustic noise before and after advance-angle tuning.
 
 ## 3. Advance Angle / Timing Compensation
 

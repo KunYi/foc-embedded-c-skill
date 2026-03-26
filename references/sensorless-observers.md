@@ -203,6 +203,17 @@ __attribute__((always_inline)) static inline bool pll_is_converged(
     return is_locked;
 }
 ```
+
+### Hardware Validation Checklist
+
+To claim the observer is product-ready, validate the following on real hardware:
+
+- Log and plot normalized PLL error versus electrical speed during startup, load steps, and deceleration.
+- Measure lock time from open-loop release to stable closed-loop tracking.
+- Compare estimated electrical angle against encoder truth or a trusted reference at low, medium, and high speed.
+- Verify angle lag stays within the application budget at maximum electrical frequency.
+- Test reverse rotation, catch-spin, and failed-start behavior explicitly; sign-convention mistakes often only appear there.
+- Verify the HFI-to-SMO handoff does not create torque discontinuity, current spikes, or angle jumps.
 ## 3. High-Frequency Injection (HFI)
 
 SMO degrades at very low speed because $\text{BEMF} \propto \omega$. For true zero-speed or near-zero-speed hold without physical sensors, an alternative estimation strategy is needed.

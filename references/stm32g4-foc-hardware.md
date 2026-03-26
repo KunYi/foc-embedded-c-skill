@@ -120,8 +120,11 @@ void tim1_pwm_init(const uint32_t pwm_freq_hz, const uint16_t dead_time_ns, cons
     TIM1->CCR3 = half_arr;
 
     /* --- Channel 4: ADC Trigger Source --- */
-    /* CCR4 sets the sampling instant within the PWM period. */
-    TIM1->CCR4 = 1u;  /* Near valley — fine-tune on bench */
+    /* CCR4 sets the sampling instant within the PWM period.
+     * The exact compare value is topology- and board-dependent.
+     * Start from a candidate point near the intended valid-sample window,
+     * then move it on the bench until the sampled current is clean and repeatable. */
+    TIM1->CCR4 = 1u;  /* Placeholder starting point only */
     TIM1->CCMR2 |= (6u << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
 
     /* TRGO2 = OC4REF → ADC external trigger source
@@ -246,3 +249,15 @@ void adc_read_auxiliary(float32_t *v_bus, float32_t *temperature) {
     *temperature = (float32_t)ADC1->JDR2 * TEMP_SCALE + TEMP_OFFSET;
 }
 ```
+
+## 7. Bench Bring-Up Checklist
+
+Before trusting the control-loop math, verify the hardware timing path directly:
+
+- Scope PWM phase voltage, low-side gate command, ADC trigger, and current-sense output simultaneously.
+- Sweep the sampling instant (`CCR4` or equivalent) until the sampled current lies inside a quiet window after switching transients.
+- Verify whether the chosen trigger source produces one sample or two samples per PWM period in the selected timer mode.
+- Confirm dual-ADC DMA word packing and channel ordering by injecting known DC currents or offsets.
+- Verify dead-time settings against actual gate-driver waveforms, not only register calculations.
+- Measure fault shutdown latency from overcurrent stimulus to gate-disable at the gate-driver pins.
+- Re-check all of the above at low bus voltage, high bus voltage, hot board temperature, and worst-case PWM duty.
