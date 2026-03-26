@@ -37,6 +37,10 @@ The `references/` directory contains constraints for the following topics:
 - `motor-protection-state-machine.md`: FOC state machine with TRANSITION state, Open-loop V/f ramp, Observer convergence, Bumpless OL→CL transfer, Stall detection, Brake resistor chopper.
 - `emergency-protection-halt.md`: HardFault overrides, BDTR/OISx/OISxN safe-states, High-Z vs Active-Short-Circuit (ASC) decision tree, Overspeed.
 - `braking-and-regeneration.md`: normal braking vs emergency halt, regenerative vs dissipative braking, DC bus sink capability, brake chopper strategy, and energy-handling verification.
+- `power-entry-and-dc-link-management.md`: precharge, inrush, contactor/relay sequencing, bus-ready logic, DC-link stress, and brown-in/brown-out handling.
+- `gate-driver-and-power-stage-constraints.md`: UVLO, desat, bootstrap limits, MOSFET/IPM/SiC/GaN constraints, and SOA-aware fault handling.
+- `emi-emc-isolation-and-cabling.md`: common-mode current, shielding, grounding, isolation assumptions, encoder/cable robustness, and EMI validation.
+- `production-test-calibration-and-service.md`: self-test, calibration retention, end-of-line checks, field diagnostics, and service logging.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.

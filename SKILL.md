@@ -35,6 +35,7 @@ Key Context Required:
 - **Command Source**: (e.g., UART, CAN, PWM input, analog throttle, host trajectory stream)
 - **Control Mode**: (e.g., torque/current, speed, position, damping/impedance, follow mode)
 - **DC Bus Energy Path**: (e.g., battery can absorb regen, active front end can sink power, bench PSU cannot sink, brake resistor present, bus capacitor only)
+- **Power Entry Topology**: (e.g., battery, rectified mains, precharged DC link, bench PSU, contactor/precharge relay, fuse strategy)
 
 ### 2. Parameter Identification
 
@@ -49,6 +50,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Account for dead-time current distortion in all modulation code — during initial bring-up, verify baseline behavior before enabling compensation. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
 - **Hardware Constraints First**: Prefer physical boundary conditions over canned code recipes. Examples: avoid ADC sampling during PWM-edge ringing, enforce minimum valid current-sampling windows, respect bootstrap refresh duty limits, and preserve comparator/gate-driver shutdown margins.
 - **Energy-Flow Awareness**: During deceleration or backdriving, the motor drive can become an energy source into the DC bus. Always identify whether the DC source can absorb regenerative power, whether a brake chopper exists, and what must happen when the bus cannot safely sink returned energy.
+- **Power-Stage Survival First**: Check power-entry sequencing, gate-driver UVLO/desat behavior, device SOA, isolation boundaries, and EMI/cabling constraints before assuming the modulation and control law can be used safely on real hardware.
 - **Supervisory Separation**: Keep host communication, command parsing, and application-level modes decoupled from the hard real-time current loop. Slow interfaces may update targets, but they must not stall, jitter, or directly corrupt the ISR timing path.
 - **Explicit Contracts**: When commands or telemetry cross a host boundary, define units, reference frames, mode semantics, and fault/state fields explicitly. Never assume the host and firmware mean the same thing by `speed`, `position`, `torque`, `follow`, or `fault`.
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
@@ -71,10 +73,14 @@ When a user requests motor drive code or debugging analysis, use the following d
 6. **Define Command and Mode Architecture**: If the product is controlled by UART, CAN, PWM input, or a host controller, read `command-and-supervisory-interfaces.md` and separate the command layer from the real-time motor loop. Define mode ownership, timeout behavior, target ramping, and what happens on communication loss.
 7. **Define Telemetry and Diagnostics**: If the design includes a host controller or product interface, read `can-uart-telemetry-and-diagnostics.md` and define command integrity checks, telemetry rates, fault reporting, and communication timeout observability.
 8. **Define Braking and Energy Handling**: If the drive may decelerate high inertia, backdrive, or regenerate, read `braking-and-regeneration.md` and define whether the DC bus can absorb returned energy, whether braking is regenerative or dissipative, and how normal braking differs from emergency halt.
-9. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
-10. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
-11. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
-12. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
+9. **Define Power Entry and DC-Link Lifecycle**: Read `power-entry-and-dc-link-management.md` when the bus source, precharge, contactor logic, or bus-capacitor lifecycle matters. Define inrush handling, brown-in/brown-out behavior, and what qualifies the bus as ready to enable PWM.
+10. **Define Power-Stage and Gate-Driver Constraints**: Read `gate-driver-and-power-stage-constraints.md` for UVLO, desat, SOA, bootstrap limits, device type trade-offs, and fault containment behavior.
+11. **Define EMC, Isolation, and Cabling Constraints**: Read `emi-emc-isolation-and-cabling.md` when the product includes long motor cables, encoders, isolated interfaces, or aggressive switching edges. Account for common-mode current, shielding, grounding, and isolation assumptions before finalizing firmware behavior.
+12. **Define Production Test and Service Strategy**: Read `production-test-calibration-and-service.md` when the solution must survive manufacturing, field service, or fleet diagnostics. Include self-test, calibration retention, production validation, and service log expectations.
+13. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
+14. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
+15. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
+16. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -90,6 +96,10 @@ AI should consult the following domain-specific references when working on the c
 - **`references/command-and-supervisory-interfaces.md`** -> UART/CAN/PWM-input command paths, mode management for torque/speed/position/damping/follow modes, command timeout behavior, target ramping, telemetry, and validation of host-to-motor control behavior.
 - **`references/can-uart-telemetry-and-diagnostics.md`** -> Product-grade command framing, telemetry grouping, fault/state reporting, CRC and timeout handling, bus-load limits, and verification of host-visible diagnostics.
 - **`references/braking-and-regeneration.md`** -> Normal deceleration versus emergency braking, regenerative versus dissipative energy handling, when the drive behaves as an energy source into the DC bus, brake chopper strategy, source sink-capability constraints, and validation of bus-energy handling.
+- **`references/power-entry-and-dc-link-management.md`** -> Power-source assumptions, precharge and inrush control, bus-ready criteria, contactor/relay sequencing, DC-link capacitor stress, brown-in/brown-out behavior, and validation of the power-entry lifecycle.
+- **`references/gate-driver-and-power-stage-constraints.md`** -> Gate-driver UVLO/desat behavior, bootstrap edge cases, MOSFET/IPM/SiC/GaN constraints, SOA-aware switching strategy, and fault containment limits at the power-device level.
+- **`references/emi-emc-isolation-and-cabling.md`** -> Common-mode current, shielding, grounding, encoder/interface isolation, cable-world dv/dt issues, and practical EMC trade-offs that affect sensing and control reliability.
+- **`references/production-test-calibration-and-service.md`** -> Startup self-test, calibration retention, end-of-line checks, service logging, fault injection, and production/field diagnostics expectations.
 - **`references/sensorless-observers.md`** -> Sliding Mode Observer (SMO) with sigmoid boundary layer, BEMF extraction, Observer PLL Tracking with correct sign convention, convergence check, High-Frequency Injection (HFI).
 - **`references/position-sensors.md`** -> QEP Encoder speed estimation (M/T method), Hall Effect 60-degree angle interpolation and period-based speed, SPI Absolute Encoder delay compensation.
 - **`references/stm32g4-foc-hardware.md`** -> Dead-time distortion compensation (parameterized threshold), TIM1 center-aligned PWM initialization, TIM1_TRGO2/CCR4 ADC trigger, Internal OPAMP PGA, COMP→BRK fast trip, ADC dual-regular-simultaneous mode with DMA.
