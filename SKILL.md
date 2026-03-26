@@ -37,6 +37,7 @@ Key Context Required:
 When a user requests motor drive code or debugging analysis, you MUST follow this strict sequence:
 
 1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, and PWM Frequency. If not, stop and ASK.
+1.5 **Parameter Identification**: Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If unknown, you MUST guide the user through the Auto-Tuning process to identify these statically/dynamically before writing arbitrary PID gains.
 2. **Establish Physical Limits**: Before writing any math, use `view_file` to read `stm32g4-foc-hardware.md` and `current-sensing-topology.md` to understand the ADC synchronization, dead-time, and PCB routing constraints.
 3. **Select Topology/Sensors**: Based on user context, fetch the specific sensor files (e.g., `sensorless-observers.md` or `position-sensors.md`).
 4. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, strictly enforcing `.ramfunc` and the Bandwidth Rule limits.
@@ -47,6 +48,7 @@ When a user requests motor drive code or debugging analysis, you MUST follow thi
 
 To prevent Hallucination, AI MUST use `view_file` to read the following domain-specific guidelines before writing code. Fetch files based on the requested topics:
 
+- **`references/auto-tuning-identification.md`** -> **[READ FOR UNKNOWN MOTORS]** Stator Resistance ($R_s$), High-frequency Inductance ($L_d, L_q$), Flux Linkage ($\Psi$), Pole Pairs identification, Zero-Pole Cancellation PI tuning.
 - **`references/emergency-protection-halt.md`** -> **[READ FIRST FOR FAULTS]** High-Z coasting vs Active Short Circuit (ASC) decision tree, HardFault handling, STM32G4 BDTR/MOE register safe-states, Overspeed logic.
 - **`references/control-foc-loops.md`** -> Cascaded Loops, PI Feed-Forward, MTPA, Field Weakening, Bandwidth Rules (1000Hz->100Hz->10Hz).
 - **`references/algorithm-svpwm-variants.md`** -> 7-Segment SVPWM, Sector Generation, 5-Segment DPWM constraints, Overmodulation limits.

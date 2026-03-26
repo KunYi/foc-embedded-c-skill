@@ -28,6 +28,9 @@ The `references/` directory contains constraints for the following topics:
 - `motor-protection-state-machine.md`: Startup, Open-loop alignment, Stall detection.
 - `emergency-protection-halt.md`: HardFault overrides, High-Z vs Active-Short-Circuit (ASC), Overspeed.
 
+**D. Generic Drives & Auto-Tuning**
+- `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation.
+
 ## Future Roadmap
 - Complete the `.vscode`, `CMakeLists.txt` open-source build skeleton.
 - Define pure Software-In-the-Loop (SIL) mock testing guidelines for FOC current loops.
