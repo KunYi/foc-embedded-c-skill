@@ -55,11 +55,18 @@ void foc_current_update(foc_current_loop_t * const foc,
     float32_t vd_target = vd_pi + vd_ff;
     float32_t vq_target = vq_pi + vq_ff;
     
-    /* 4. Circle Limitation (Dynamic clamping based on Bus Voltage)
-     *    V_max = Vdc / sqrt(3)  for amplitude-invariant Clarke.
-     *    Compare in squared domain to avoid sqrt on every cycle.
-     *    sqrt only executes when saturation fires (rare in steady state). */
+    /* 4. Voltage Limitation (Dynamic clamping based on Bus Voltage)
+     *    Standard linear limit: V_max_linear = Vdc / sqrt(3)
+     *    OVM limit (Hexagon peak): V_max_ovm = 2 * Vdc / 3
+     *    Set ENABLE_OVM macro externally to dictate the limit logic. */
+#ifdef ENABLE_OVM
+    /* Relax the PI clamp to the hexagon boundary (OVM allowed) */
+    const float32_t v_max = bus_voltage * 0.66666667f; /* 2/3 */
+#else
+    /* Strictly linear modulation (Inscribed circle limit) */
     const float32_t v_max = bus_voltage * FOC_INV_SQRT3;
+#endif
+
     const float32_t v_max_sq = v_max * v_max;
     const float32_t v_sq = (vd_target * vd_target) + (vq_target * vq_target);
     
@@ -187,7 +194,11 @@ void field_weakening_update(field_weakening_t * const fw,
                             float32_t * const id_ref_out, float32_t * const iq_ref_out) {
 
     /* 1. Compute voltage margin (how close to the limit) */
+#ifdef ENABLE_OVM
+    const float32_t v_max = bus_voltage * 0.66666667f;
+#else
     const float32_t v_max = bus_voltage * FOC_INV_SQRT3;
+#endif
     fw->v_max_sq = v_max * v_max;
     const float32_t v_cmd_sq = (vd * vd) + (vq * vq);
 

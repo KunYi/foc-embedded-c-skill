@@ -29,6 +29,7 @@ The `references/` directory contains constraints for the following topics:
 
 **C. Hardware & System**
 - `stm32g4-foc-hardware.md`: TIM1 center-aligned PWM init, ADC dual-simultaneous mode + DMA, OPAMP PGA, COMP→BRK fast trip, Dead-Time distortion compensation.
+- `protection-diagnostics.md`: Advanced $I^2t$ thermal overload modeling, dynamic torque limit rollback, protection hierarchy.
 - `motor-protection-state-machine.md`: FOC state machine with TRANSITION state, Open-loop V/f ramp, Observer convergence, Bumpless OL→CL transfer, Stall detection, Brake resistor chopper.
 - `emergency-protection-halt.md`: HardFault overrides, BDTR/OISx/OISxN safe-states, High-Z vs Active-Short-Circuit (ASC) decision tree, Overspeed.
 

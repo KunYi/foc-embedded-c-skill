@@ -55,28 +55,54 @@ __attribute__((always_inline)) static inline void svpwm_generate(
     const uint8_t sector = sector_map[(a << 2u) | (b << 1u) | c];
 
     /* 3. Calculate Active Vector times T1, T2 */
+    /* Normalize V_alpha and V_beta to the DC bus voltage */
+    const float32_t inv_vdc = FOC_ONE / v_dc;
+    const float32_t t_alpha = v_alpha * inv_vdc;
+    const float32_t t_beta_sqrt3 = v_beta * inv_vdc * FOC_SQRT3;
+
+    /* Calculate unscaled duty cycles for the active vectors */
     float32_t t1 = FOC_ZERO;
     float32_t t2 = FOC_ZERO;
-    
-    switch(sector) {
-        case 1u: t1 = Z;  t2 = Y;  break;
-        case 2u: t1 = Y;  t2 = -X; break;
-        case 3u: t1 = -Z; t2 = X;  break;
-        case 4u: t1 = -X; t2 = Z;  break;
-        case 5u: t1 = X;  t2 = -Y; break;
-        case 6u: t1 = -Y; t2 = -Z; break;
-        default: 
-            /* ARM-GCC optimization: tell compiler this is a bounded 1..6 logic */
+
+    /* Sector 1: v_alpha > 0, v_beta > 0, v_beta < v_alpha * sqrt(3) */
+    switch (sector) {
+        case 1u:
+            t1 = t_alpha - t_beta_sqrt3;
+            t2 = t_beta_sqrt3 * 2.0f;
+            break;
+        case 2u:
+            t1 = t_alpha + t_beta_sqrt3;
+            t2 = t_beta_sqrt3 * 2.0f;
+            break;
+        case 3u:
+            t1 = -(t_alpha - t_beta_sqrt3);
+            t2 = -(t_alpha + t_beta_sqrt3);
+            break;
+        case 4u:
+            t1 = -t_alpha - t_beta_sqrt3;
+            t2 = -(t_beta_sqrt3 * 2.0f);
+            break;
+        case 5u:
+            t1 = -t_alpha + t_beta_sqrt3;
+            t2 = -(t_beta_sqrt3 * 2.0f);
+            break;
+        case 6u:
+            t1 = t_alpha + t_beta_sqrt3;
+            t2 = -(t_alpha - t_beta_sqrt3);
+            break;
+        default:
             __builtin_unreachable();
     }
 
-    /* 4. Normalize and Overmodulation clamp */
-    const float32_t inv_vdc = FOC_ONE / v_dc;
-    t1 *= inv_vdc;
-    t2 *= inv_vdc;
-    
+    /* --- Overmodulation (OVM) Region 1 Handling ---
+     * For a standard linear SVPWM, the maximum voltage vector must fit inside
+     * the hexagon's inscribed circle: t1 + t2 <= 1.0.
+     * If the user commands a voltage beyond this circle (e.g. into the corners
+     * of the hexagon), we enter Overmodulation Region 1.
+     * We stretch the active vectors to consume the entire PWM period,
+     * forcing the zero-vector (t0) to identically zero. */
     const float32_t t_sum = t1 + t2;
-    if (t_sum > FOC_ONE) {
+    if (__builtin_expect(!!(t_sum > FOC_ONE), 0)) {
         const float32_t scale = FOC_ONE / t_sum;
         t1 *= scale;
         t2 *= scale;

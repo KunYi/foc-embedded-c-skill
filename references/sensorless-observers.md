@@ -203,7 +203,6 @@ __attribute__((always_inline)) static inline bool pll_is_converged(
     return is_locked;
 }
 ```
-
 ## 3. High-Frequency Injection (HFI)
 
 SMO degrades at very low speed because $\text{BEMF} \propto \omega$. For true zero-speed or near-zero-speed hold without physical sensors, an alternative estimation strategy is needed.
@@ -215,3 +214,70 @@ SMO degrades at very low speed because $\text{BEMF} \propto \omega$. For true ze
 - **Handoff**: As the motor accelerates and BEMF grows, transition from HFI-based estimation to SMO/PLL-based estimation using a blending function weighted by speed.
 
 Injection frequency, amplitude, demodulation filter design, and HFI↔SMO crossover speed are all application-dependent. If the motor is SPM (non-salient), HFI is not applicable — use open-loop startup followed by SMO transition instead.
+
+### HFI Injection & Extraction Mechanics
+
+The standard approach uses a high-frequency voltage cosine injected on the estimated d-axis ($V_d^*$).
+
+```c
+typedef struct {
+    float32_t v_hfi_amplitude; /* Peak injection voltage [V] */
+    float32_t w_hfi;           /* Injection frequency [rad/s] */
+    float32_t hfi_angle;       /* Accumulator for injection angle [rad] */
+    float32_t dt;              /* Sample period [s] */
+    
+    /* Filters for extracting the carrier frequency */
+    float32_t iq_hpf_state;    /* HPF to remove fundamental current */
+    float32_t err_lpf_state;   /* LPF to isolate the demodulated DC error */
+} hfi_observer_t;
+
+/**
+ * @brief  Inject High-Frequency test signal into the d-axis voltage command.
+ *         Call this *after* the current-loop PI controllers have set Vd_target.
+ */
+__attribute__((always_inline)) static inline float32_t hfi_inject(
+                                    hfi_observer_t * const hfi, 
+                                    const float32_t vd_base_cmd) {
+    /* 1. Advance the injection angle oscillator */
+    hfi->hfi_angle += hfi->w_hfi * hfi->dt;
+    if (hfi->hfi_angle > FOC_TWO_PI) {
+        hfi->hfi_angle -= FOC_TWO_PI;
+    } else {
+        /* Intentionally empty */
+    }
+
+    /* 2. Superimpose HF voltage: Vd* = Vd_pi + V_hfi * cos(w_hfi * t) */
+    const float32_t v_inject = hfi->v_hfi_amplitude * cosf(hfi->hfi_angle);
+    return vd_base_cmd + v_inject;
+}
+```
+
+If the electrical angle estimate ($\hat{\theta}$) is misaligned by an error $\Delta\theta$, the high-frequency current ripples into the $q$-axis. By demodulating $I_q$ with $\sin(\omega_{hfi} t)$, we extract a signal proportional to $\Delta\theta$.
+
+```c
+/**
+ * @brief  Demodulate the q-axis current to extract the angle tracking error.
+ *         Feed the output `angle_error` into your observer_pll_t instead of BEMF.
+ */
+__attribute__((section(".ramfunc")))
+float32_t hfi_demodulate(hfi_observer_t * const hfi, const float32_t iq_meas) {
+    
+    /* 1. High-Pass Filter (HPF) the q-axis current to remove the DC/fundamental torque current.
+     *    Example implementation: First-order HPF (y[n] = alpha * (y[n-1] + x[n] - x[n-1])) */
+    /* [Simplified for conceptual reference - assume HPF function exists] */
+    const float32_t iq_high_freq = hpf_process(&hfi->iq_hpf_state, iq_meas);
+
+    /* 2. Demodulate: multiply by sin(w_hfi * t)
+     *    Because we injected cos(), the misaligned signal appears in sin(). */
+    const float32_t demodulated = iq_high_freq * sinf(hfi->hfi_angle);
+
+    /* 3. Low-Pass Filter (LPF) to isolate the DC error tracking term. */
+    const float32_t angle_error = lpf_process(&hfi->err_lpf_state, demodulated);
+
+    /* Note: The sign of angle_error relative to true ∆θ depends on motor polarity 
+     * (Ld < Lq) and injection axes. You may need to invert this signal to match 
+     * the positive-feedback convention of your PLL. */
+    return angle_error;
+    /* Send this angle_error directly to the PI integration step of your update_pll() */
+}
+```
