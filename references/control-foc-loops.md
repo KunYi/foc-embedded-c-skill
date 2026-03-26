@@ -247,6 +247,24 @@ Inner loops must execute sufficiently faster than outer loops to remain approxim
 - **Speed Loop** ($\omega$): Typically one decade slower than the current loop, but tune relative to inertia, friction, load transients, and sensor quality.
 - **Position Loop** ($\theta$): Typically another factor slower, unless the application deliberately pushes servo stiffness and has the sensing fidelity to support it.
 
+### Supervisory Target Conditioning and Bumpless Handover
+In a product drive, the outer loops are usually fed by a supervisory source such as UART, CAN, PWM input, or a host trajectory generator rather than a fixed local constant.
+
+Before a host-level target reaches the speed or position loop:
+- apply range checks in engineering units
+- apply ramp, acceleration, or jerk limits consistent with the mechanics
+- reject stale or invalid commands before they reach the loop integrators
+- define a deterministic handover rule when switching between torque, speed, and position modes
+
+Hard rule: do not let a mode switch or host packet boundary instantaneously inject a hidden integrator mismatch into the outer loop. If the target owner changes, either:
+- freeze and reinitialize the outgoing loop state, or
+- preload the incoming loop state so the resulting torque/current stays continuous within documented limits
+
+Acceptance criteria for supervisory handover:
+- switching from speed mode to torque mode does not create an uncontrolled current step
+- switching from position mode to speed mode does not leave the speed integrator wound up from the previous mode
+- a lost host command causes the outer-loop target to follow the documented fallback policy rather than holding an unsafe stale request indefinitely
+
 ### B. Position Loop (P Controller + Velocity Feed-Forward)
 As a default, prefer a Proportional (P) position loop with velocity feed-forward because it is easy to stabilize and avoids many quantization and windup problems.
 Integral or derivative action can still be valid in servo applications, but only when the sensing quality, anti-windup behavior, derivative filtering, and mechanical resonance risks are understood.
@@ -299,3 +317,11 @@ float32_t foc_speed_update(pi_controller_t * const pi_spd,
     return clamp_f32(iq_cmd, -MAX_CURRENT, MAX_CURRENT);
 }
 ```
+
+### Speed-Loop Validation Under Host Commands
+When the speed loop is driven by a host command path instead of a local knob:
+
+- log both the raw commanded speed and the conditioned internal speed target
+- verify packet jitter or supervisory scheduling jitter does not appear as torque ripple at the motor
+- step the host command and confirm the resulting `Iq_ref` respects current limits and acceleration policy
+- validate timeout behavior explicitly: the speed loop should decay, hold, or fault exactly as the product definition requires

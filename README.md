@@ -26,6 +26,8 @@ The `references/` directory contains constraints for the following topics:
 
 **B. Sensing & Observers**
 - `current-sensing-topology.md`: 1/2/3 Shunt timing, 2-shunt reconstruction, Asymmetric PWM, PCB Kelvin routing, topology selection guide.
+- `command-and-supervisory-interfaces.md`: UART/CAN/PWM-input command paths, mode management, target conditioning, timeout handling, and host-to-motor validation.
+- `can-uart-telemetry-and-diagnostics.md`: command framing, telemetry design, fault reporting, communication timeout behavior, and diagnostics validation.
 - `sensorless-observers.md`: SMO with sigmoid boundary layer, PLL tracking (correct sign convention), convergence check, HFI.
 - `position-sensors.md`: QEP M/T speed estimation, Hall angle interpolation & period-based speed, SPI delay compensation.
 

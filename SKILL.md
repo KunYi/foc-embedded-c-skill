@@ -32,6 +32,8 @@ Key Context Required:
 - **PWM Frequency**: (e.g., 10kHz, 20kHz, determines your ISR budget)
 - **Sensing Topology**: (e.g., Inline, 1-Shunt, 2-Shunt, 3-Shunt? Determines ADC injection setup)
 - **Position Sensor**: (e.g., QEP Encoder, Hall, Sensorless SMO, or BEMF zero-crossing?)
+- **Command Source**: (e.g., UART, CAN, PWM input, analog throttle, host trajectory stream)
+- **Control Mode**: (e.g., torque/current, speed, position, damping/impedance, follow mode)
 
 ### 2. Parameter Identification
 
@@ -45,6 +47,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - Make protection (Overcurrent via COMP→TIM_BRK, Overvoltage, Stall) higher priority than speed/position tracking.
 - **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Account for dead-time current distortion in all modulation code — during initial bring-up, verify baseline behavior before enabling compensation. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
 - **Hardware Constraints First**: Prefer physical boundary conditions over canned code recipes. Examples: avoid ADC sampling during PWM-edge ringing, enforce minimum valid current-sampling windows, respect bootstrap refresh duty limits, and preserve comparator/gate-driver shutdown margins.
+- **Supervisory Separation**: Keep host communication, command parsing, and application-level modes decoupled from the hard real-time current loop. Slow interfaces may update targets, but they must not stall, jitter, or directly corrupt the ISR timing path.
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Acceleration Philosophy**: Treat CORDIC and FMAC as first-class optimization tools, not dogma. On STM32G4 FOC projects, CORDIC is usually relevant and FMAC is often relevant because current, speed, observer, sensor, and compensator paths frequently include filtering. Use them when they improve real-time behavior without creating unacceptable observability, scaling, or safety-validation risk.
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
@@ -62,10 +65,12 @@ When a user requests motor drive code or debugging analysis, use the following d
    - **Trapezoidal BEMF (true BLDC)** → Consider six-step commutation (`bldc-six-step.md`)
    - **"BLDC" with sinusoidal BEMF** → Use sinusoidal FOC despite the label
 5. **Select Topology/Sensors**: Based on user context, fetch the specific sensor files (e.g., `sensorless-observers.md` or `position-sensors.md`).
-6. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
-7. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
-8. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
-9. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
+6. **Define Command and Mode Architecture**: If the product is controlled by UART, CAN, PWM input, or a host controller, read `command-and-supervisory-interfaces.md` and separate the command layer from the real-time motor loop. Define mode ownership, timeout behavior, target ramping, and what happens on communication loss.
+7. **Define Telemetry and Diagnostics**: If the design includes a host controller or product interface, read `can-uart-telemetry-and-diagnostics.md` and define command integrity checks, telemetry rates, fault reporting, and communication timeout observability.
+8. **Choose Numeric and Acceleration Strategy**: For transforms, observers, filters, and compensators, decide whether plain FPU code, CORDIC, FMAC, lookup tables, or mixed approaches are best for the MCU budget. Prefer the simplest implementation that still meets timing, determinism, and safety requirements.
+9. **Implement Control Loops**: Use `control-foc-loops.md` and `algorithm-svpwm-variants.md` to generate the inner loop C code, enforcing memory placement, timing, and bandwidth separation only as tightly as the actual platform budget requires.
+10. **Verify Fault States**: Ensure the design explicitly conforms to the safety states defined in `emergency-protection-halt.md`.
+11. **Provide Hardware Acceptance Criteria**: Output the code along with strict physical measurement metrics, real-world analog pain points, and a manual bench-verification plan.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -78,6 +83,8 @@ AI should consult the following domain-specific references when working on the c
 - **`references/dq-transform-cordic.md`** -> Clarke (2-phase KCL optimized), Park, Inverse Park, STM32G4 CORDIC CSR initialization, Async CORDIC ISR pipeline pattern.
 - **`references/fmac-filtering-and-compensation.md`** -> When to offload filtering or compensator workloads to STM32G4 FMAC, IIR coefficient loading example, when plain FPU code is better, and what trade-offs must be justified.
 - **`references/current-sensing-topology.md`** -> 1-Shunt, 2-Shunt, 3-Shunt timing, Inline sensing, Asymmetric PWM injection, Shunt Resistor ESL, PCB Kelvin connection, RC Anti-aliasing filters, topology selection guide.
+- **`references/command-and-supervisory-interfaces.md`** -> UART/CAN/PWM-input command paths, mode management for torque/speed/position/damping/follow modes, command timeout behavior, target ramping, telemetry, and validation of host-to-motor control behavior.
+- **`references/can-uart-telemetry-and-diagnostics.md`** -> Product-grade command framing, telemetry grouping, fault/state reporting, CRC and timeout handling, bus-load limits, and verification of host-visible diagnostics.
 - **`references/sensorless-observers.md`** -> Sliding Mode Observer (SMO) with sigmoid boundary layer, BEMF extraction, Observer PLL Tracking with correct sign convention, convergence check, High-Frequency Injection (HFI).
 - **`references/position-sensors.md`** -> QEP Encoder speed estimation (M/T method), Hall Effect 60-degree angle interpolation and period-based speed, SPI Absolute Encoder delay compensation.
 - **`references/stm32g4-foc-hardware.md`** -> Dead-time distortion compensation (parameterized threshold), TIM1 center-aligned PWM initialization, TIM1_TRGO2/CCR4 ADC trigger, Internal OPAMP PGA, COMP→BRK fast trip, ADC dual-regular-simultaneous mode with DMA.
