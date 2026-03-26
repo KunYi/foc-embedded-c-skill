@@ -5,8 +5,10 @@ This document covers the cascaded control loops for FOC: Position, Speed, and Cu
 
 The timing figures and code patterns below are reference-grade starting points. Final placement, acceleration choice, and bandwidth targets must be derived from the actual PWM rate, MCU clock, plant dynamics, and measurement delay.
 
+**Convention**: All voltage limits and scaling assume the **amplitude-invariant** Clarke transform ($\frac{2}{3}$ scaling). The linear modulation limit is $V_{max} = \frac{V_{dc}}{\sqrt{3}}$.
+
 ## 1. Cross-Coupling Decoupling (PI Feed-forward)
-The PM motor equations indicate that the d-axis and q-axis voltages are coupled entirely by the motor speed ($\omega_e$). To tune the PI controllers effectively as linear independent systems, you MUST decouple them.
+The PM motor equations indicate that the d-axis and q-axis voltages are coupled by the motor speed ($\omega_e$). Decoupling improves PI tuning by making the d and q axes behave as independent linear systems. At low speeds the coupling terms are negligible, but at moderate-to-high speeds they become significant and decoupling is strongly recommended.
 
 **Mathematical Model:**
 - $V_d = V_{d\_pi} - \omega_e \times L_q \times I_q$
@@ -36,23 +38,40 @@ void foc_current_update(foc_current_loop_t *foc, float32_t id_ref, float32_t iq_
     float32_t vd_pi = pi_update(&foc->pi_id, id_ref, id_meas);
     float32_t vq_pi = pi_update(&foc->pi_iq, iq_ref, iq_meas);
     
-    /* 2. Calculate Feed-forward terms */
-    float32_t vd_ff = -(foc->omega_e * foc->l_q * iq_meas);
-    float32_t vq_ff =  (foc->omega_e * foc->l_d * id_meas) + (foc->omega_e * foc->flux_link);
+    /* 2. Feed-forward decoupling terms
+     *    Pre-multiply omega_e once to save a cycle */
+    float32_t we = foc->omega_e;
+    float32_t vd_ff = -(we * foc->l_q * iq_meas);
+    float32_t vq_ff =  (we * foc->l_d * id_meas) + (we * foc->flux_link);
     
     /* 3. Apply Decoupling */
     float32_t vd_target = vd_pi + vd_ff;
     float32_t vq_target = vq_pi + vq_ff;
     
-    /* 4. Circle Limitation (Dynamic clamping based on Bus Voltage) */
-    /* V_max = Bus / sqrt(3) */
-    float32_t v_max = bus_voltage * 0.577350269f;
-    float32_t v_sq  = (vd_target * vd_target) + (vq_target * vq_target);
+    /* 4. Circle Limitation (Dynamic clamping based on Bus Voltage)
+     *    V_max = Vdc / sqrt(3)  for amplitude-invariant Clarke.
+     *    Compare in squared domain to avoid sqrt on every cycle.
+     *    sqrt only executes when saturation fires (rare in steady state). */
+    float32_t v_max = bus_voltage * 0.577350269f;  /* 1/sqrt(3) */
+    float32_t v_max_sq = v_max * v_max;
+    float32_t v_sq = (vd_target * vd_target) + (vq_target * vq_target);
     
-    if (v_sq > (v_max * v_max)) {
-        float32_t scale = v_max / sqrtf(v_sq); /* Heavy instruction, consider a faster path only if justified */
+    if (v_sq > v_max_sq) {
+        float32_t scale = v_max / sqrtf(v_sq);
         vd_target *= scale;
         vq_target *= scale;
+        
+        /* Anti-windup: when voltage saturates, the PI integrators must
+         * be frozen or corrected. Feed back the saturation to prevent
+         * windup. See also: Field Weakening (Section 2) which uses this
+         * saturation signal to generate negative Id.
+         *
+         * Alternative: Vq-priority scaling. Instead of symmetric scaling,
+         * clamp Vd first, then allocate remaining voltage to Vq:
+         *   vd_target = clamp(vd_target, -vd_limit, vd_limit);
+         *   float32_t vq_limit = sqrtf(v_max_sq - vd_target*vd_target);
+         *   vq_target = clamp(vq_target, -vq_limit, vq_limit);
+         * This preserves torque response during transients. */
     }
     
     *vd_out = vd_target;
@@ -60,25 +79,161 @@ void foc_current_update(foc_current_loop_t *foc, float32_t id_ref, float32_t iq_
 }
 ```
 
-## 2. Field Weakening (FW) & MTPA 
-When driving an IPMSM (where $L_q > L_d$), setting $I_d = 0$ leaves torque geometry on the table.
-- **Maximum Torque Per Ampere (MTPA)**: Inject negative $I_d$ proportional to $I_q$ to harvest reluctance torque. This is usually implemented as a Look-Up Table (LUT) populated during motor commissioning to avoid heavy non-linear roots calculations in the ISR.
-- **Field Weakening**: Once $V_{cmd}$ hits the voltage hexagon limit (`v_max`), the speed controller must output negative $I_d$ to suppress $\Psi_f$, allowing higher RPMs at the cost of ohmic efficiency.
+### PI Controller Reference Implementation
+
+For completeness, here is a production-grade PI with anti-windup:
+
+```c
+typedef struct {
+    float32_t kp;           /* Proportional gain */
+    float32_t ki;           /* Integral gain */
+    float32_t integrator;   /* Integral state */
+    float32_t out_min;      /* Output lower clamp */
+    float32_t out_max;      /* Output upper clamp */
+} pi_controller_t;
+
+/**
+ * @brief PI controller with conditional-integration anti-windup.
+ *        The integrator only accumulates when the output is not saturated.
+ *        Suitable for current, speed, and FW loops.
+ */
+static inline float32_t pi_update(pi_controller_t *pi,
+                                   float32_t ref, float32_t meas) {
+    float32_t error = ref - meas;
+    
+    /* Proportional + Integral */
+    float32_t output = (pi->kp * error) + pi->integrator;
+    
+    /* Clamp output */
+    if (output > pi->out_max) {
+        output = pi->out_max;
+    } else if (output < pi->out_min) {
+        output = pi->out_min;
+    } else {
+        /* Only integrate when not saturated (conditional integration) */
+        pi->integrator += pi->ki * error;
+    }
+    
+    return output;
+}
+```
+
+## 2. Field Weakening (FW) & MTPA
+
+### A. Maximum Torque Per Ampere (MTPA)
+
+For IPM motors ($L_q > L_d$), setting $I_d = 0$ wastes reluctance torque. MTPA optimizes the Id/Iq split to maximize torque per unit current.
+
+**MTPA Angle**: For a given current magnitude $I_s$:
+$$\gamma_{MTPA} = \arcsin\left(\frac{-\Psi_f + \sqrt{\Psi_f^2 + 8(L_q - L_d)^2 I_s^2}}{4(L_q - L_d) I_s}\right)$$
+
+**Production Implementation**: This nonlinear equation is too expensive for an ISR. Use a LUT generated during commissioning:
+
+```c
+/**
+ * @brief MTPA lookup: given desired torque current magnitude,
+ *        returns optimal Id reference for IPM reluctance harvest.
+ *
+ *        LUT is populated offline during motor commissioning by
+ *        sweeping Is and computing the MTPA angle analytically.
+ */
+typedef struct {
+    float32_t is_table[MTPA_LUT_SIZE];   /* Current magnitude breakpoints [A] */
+    float32_t id_table[MTPA_LUT_SIZE];   /* Corresponding optimal Id [A] */
+    uint16_t  size;
+} mtpa_lut_t;
+
+float32_t mtpa_lookup(const mtpa_lut_t *lut, float32_t iq_cmd) {
+    float32_t is_mag = fabsf(iq_cmd);  /* Simplified: assume Id_mtpa << Iq initially */
+    
+    /* Linear interpolation across LUT */
+    for (uint16_t i = 0; i < lut->size - 1; i++) {
+        if (is_mag <= lut->is_table[i + 1]) {
+            float32_t frac = (is_mag - lut->is_table[i])
+                           / (lut->is_table[i + 1] - lut->is_table[i]);
+            return lut->id_table[i] + frac * (lut->id_table[i + 1] - lut->id_table[i]);
+        }
+    }
+    return lut->id_table[lut->size - 1];  /* Saturate at max */
+}
+```
+
+For SPM motors ($L_d \approx L_q$), MTPA reduces to $I_d = 0$ and MTPA logic can be bypassed entirely.
+
+### B. Field Weakening (FW)
+
+When the voltage command approaches the hexagon limit, the motor has reached its **base speed**. To go faster, inject negative $I_d$ to suppress flux, reducing back-EMF and allowing higher RPM at the cost of copper loss.
+
+**Production FW Implementation** — Voltage-feedback FW regulator:
+
+```c
+typedef struct {
+    pi_controller_t pi_fw;    /* FW PI: input = voltage margin, output = Id_fw */
+    float32_t v_max_sq;       /* Pre-squared voltage limit (updated each cycle) */
+    float32_t id_fw_min;      /* Maximum negative Id for FW (motor demagnetization limit) */
+} field_weakening_t;
+
+/**
+ * @brief Voltage-feedback field weakening controller.
+ *        Call AFTER foc_current_update() to check if voltage saturated.
+ *
+ * @param fw          Field weakening state
+ * @param vd, vq      Output voltages from current loop
+ * @param bus_voltage  Current DC bus voltage
+ * @param id_ref_out   Modified Id reference (base Id + FW contribution)
+ * @param iq_ref_out   Modified Iq reference (may be reduced if current circle limits)
+ * @param id_base     Base Id reference (from MTPA or user command)
+ * @param iq_base     Base Iq reference (from speed loop)
+ */
+void field_weakening_update(field_weakening_t *fw,
+                            float32_t vd, float32_t vq, float32_t bus_voltage,
+                            float32_t id_base, float32_t iq_base,
+                            float32_t *id_ref_out, float32_t *iq_ref_out) {
+
+    /* 1. Compute voltage margin (how close to the limit) */
+    float32_t v_max = bus_voltage * 0.577350269f;
+    fw->v_max_sq = v_max * v_max;
+    float32_t v_cmd_sq = (vd * vd) + (vq * vq);
+
+    /* 2. FW PI regulator: drives voltage to just below the limit.
+     *    Error > 0 means voltage is saturated → need more negative Id.
+     *    Error < 0 means voltage has margin → reduce FW current. */
+    /* 95% voltage threshold → compare against (0.95 * Vmax)² = 0.9025 * Vmax² */
+    float32_t voltage_error = v_cmd_sq - fw->v_max_sq * 0.9025f;
+    float32_t id_fw = pi_update(&fw->pi_fw, 0.0f, -voltage_error);
+
+    /* 3. Clamp FW Id to prevent demagnetization */
+    if (id_fw < fw->id_fw_min) id_fw = fw->id_fw_min;
+    if (id_fw > 0.0f) id_fw = 0.0f;  /* FW only injects negative Id */
+
+    /* 4. Apply current circle constraint: Id² + Iq² ≤ Imax²
+     *    FW Id has priority — reduce Iq if needed. */
+    float32_t id_total = id_base + id_fw;
+    float32_t iq_limit = sqrtf(fmaxf(MAX_CURRENT_SQ - id_total * id_total, 0.0f));
+    float32_t iq_final = clamp_f32(iq_base, -iq_limit, iq_limit);
+
+    *id_ref_out = id_total;
+    *iq_ref_out = iq_final;
+}
+```
 
 **Hardware Validation Criteria**:
 To verify Field Weakening code is successful:
 1. Rev the motor to maximum base RPM.
 2. Probe DAC mapping to $I_d$. It should aggressively dive negative as you push the throttle past base speed.
+3. $V_{cmd}$ magnitude should stabilize at ~95% of $V_{max}$ (squared threshold 0.9025) and stay there — the FW PI is regulating it.
+4. If $I_d$ hits the demagnetization limit and speed still rises, the system will lose control — verify this boundary on the bench.
+
 ## 3. Cascaded Outer Loops (Speed & Position)
 
 A robust drive feeds the output of the Position loop into the Speed loop, and the Speed loop into the Current loop.
 
 ### A. The Bandwidth Rule (Frequency Separation)
-Inner loops MUST execute exponentially faster than outer loops to remain mathematically decoupled. If you run the speed PI at the same frequency as the current PI without proper gains, the system will oscillate violently.
-- **Rule of Thumb Ratio**: 10:1
-- **Current Loop** ($I_q, I_d$): Commonly in the tens of kHz region, with bandwidth chosen well below switching frequency and adjusted for sensing delay, dead-time distortion, and plant inductance.
-- **Speed Loop** ($\omega$): Commonly around one decade slower than the current loop, but tune relative to inertia, friction, load shocks, and sensor quality.
-- **Position Loop** ($\theta$): Commonly another decade slower, unless the application deliberately pushes servo stiffness and has the sensing fidelity to support it.
+Inner loops must execute sufficiently faster than outer loops to remain approximately decoupled. Running cascaded loops at similar bandwidths without careful gain design will cause oscillation.
+- **Common Starting Ratio**: 5:1 to 10:1. Tighter ratios (3:1) are achievable with proper digital delay compensation and verified phase margin.
+- **Current Loop** ($I_q, I_d$): Commonly in the kHz range, with bandwidth chosen well below switching frequency and adjusted for sensing delay, dead-time distortion, and plant inductance.
+- **Speed Loop** ($\omega$): Typically one decade slower than the current loop, but tune relative to inertia, friction, load transients, and sensor quality.
+- **Position Loop** ($\theta$): Typically another factor slower, unless the application deliberately pushes servo stiffness and has the sensing fidelity to support it.
 
 ### B. Position Loop (P Controller + Velocity Feed-Forward)
 As a default, prefer a Proportional (P) position loop with velocity feed-forward because it is easy to stabilize and avoids many quantization and windup problems.
@@ -119,7 +274,7 @@ float32_t foc_speed_update(pi_controller_t *pi_spd, float32_t spd_target, float3
     
     /* Inertia (Torque) Feed-forward: T = J * alpha */
     /* Scale Torque to Current: Iq_ff = T_ff / Kt */
-    float32_t iq_ff = (accel_feedforward * system_inertia_J) / MOTOR_KT;
+    float32_t iq_ff = (accel_feedforward * system_inertia_J) * INV_MOTOR_KT;  /* precompute 1/Kt */
     
     float32_t iq_cmd = iq_pi + iq_ff;
     

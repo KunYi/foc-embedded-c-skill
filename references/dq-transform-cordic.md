@@ -3,57 +3,158 @@
 ## Overview
 Field-Oriented Control involves continuous rotations of the reference frame using Clarke and Park transforms. The `sin(theta)` and `cos(theta)` operations mathematically dominate the cycle count.
 
-The implementation examples below show a common STM32G4 optimization pattern. Use CORDIC when it improves deterministic timing or frees enough CPU budget to matter; plain FPU code may remain preferable during bring-up, low-rate control paths, or when simplicity outweighs the saved cycles.
+The implementation examples below show common STM32G4 production patterns. Use CORDIC when it improves deterministic timing or frees enough CPU budget to matter; plain FPU code may remain preferable during bring-up, low-rate control paths, or when simplicity outweighs the saved cycles.
 
-## 1. Clarke / Park Equations (Amplitude-Invariant Form)
-- **Clarke (3-phase to 2-phase stationary)**:
-  - $I_\alpha = \frac{2}{3}(I_A - 0.5 \times I_B - 0.5 \times I_C)$
-  - $I_\beta = \frac{2}{3}(\frac{\sqrt{3}}{2} I_B - \frac{\sqrt{3}}{2} I_C)$
-- **Park (Stationary to Rotating frame)**:
-  - $I_d = I_\alpha \cos(\theta) + I_\beta \sin(\theta)$
-  - $I_q = -I_\alpha \sin(\theta) + I_\beta \cos(\theta)$
+**Convention**: This skill uses the **amplitude-invariant** Clarke transform ($\frac{2}{3}$ scaling). All downstream documents (SVPWM, circle limitation, decoupling) are consistent with this convention. Do NOT mix with the power-invariant ($\sqrt{2/3}$) form without propagating the scaling change to every dependent equation.
 
-## 2. STM32G4 CORDIC Asynchronous Offloading
+## 1. Clarke Transform (3-Phase → αβ Stationary)
 
-Software trigonometric paths are usually much slower than hardware CORDIC on STM32G4, but the exact cycle count depends strongly on the library, compiler, optimization settings, and whether you measure one function or an entire conversion path.
-STM32G4 has a specific **CORDIC Coprocessor**.
+**Full Equations (Amplitude-Invariant)**:
+- $I_\alpha = \frac{2}{3}(I_A - \frac{1}{2} I_B - \frac{1}{2} I_C)$
+- $I_\beta = \frac{2}{3} \cdot \frac{\sqrt{3}}{2}(I_B - I_C) = \frac{\sqrt{3}}{3}(I_B - I_C)$
 
-**The Async Trick**: Avoid blocking on CORDIC when useful work can overlap its latency.
-The standard approach is blocking (`write_cordic -> wait -> read_cordic`). 
-A common high-performance STM32G4 strategy is asynchronous CORDIC:
-1. First step in ISR: Trigger CORDIC computation by writing the raw angle `theta`.
-2. Do other work: Fetch ADC readings, run protections, or calculate Clarke transforms while CORDIC crunches hardware math.
-3. Read CORDIC results after enough useful work has elapsed for the result to be ready or nearly ready.
+**Production Simplification**: In a balanced 3-phase system ($I_A + I_B + I_C = 0$), you only need 2 ADC readings. Substituting $I_C = -(I_A + I_B)$:
 
 ```c
 /**
- * @brief Fast asynchronous Park Transform using STM32G4 CORDIC
- *        Requires CORDIC to be pre-configured in Cosine/Sine Mode (Function = 0)
- *        with 32-bit Q31 input/output formats.
+ * @brief Clarke transform using only 2 measured phase currents.
+ *        Uses Kirchhoff's Current Law: Ic = -(Ia + Ib)
+ *
+ *        Production note: The 2/3 scaling factor is part of the
+ *        amplitude-invariant convention. Some codebases absorb this
+ *        constant into the PI gains to save 2 multiplies per ISR.
+ *        If you do that, document it and ensure SVPWM input scaling matches.
  */
-void cordic_async_park(float32_t i_alpha, float32_t i_beta, float32_t theta_rad, 
-                       float32_t *i_d, float32_t *i_q) {
-    
-    /* 1. Convert float radian angle to Q31 format for CORDIC (-pi..pi -> -1..1) */
-    int32_t q31_angle = (int32_t)(theta_rad * 683565275.57643f); /* theta / PI * 2^31 */
-    
-    /* 2. Write angle to CORDIC WDATA to TRIGGER hardware calculation asynchronously */
-    CORDIC->WDATA = (uint32_t)q31_angle;
-    
-    /* ---- CPU IS NOW FREE FOR OVERLAPPED WORK ---- */
-    /* (Execute Clarke transform or protection checks here if not already done.) */
-    __NOP(); __NOP(); /* Example spacing */
-    
-    /* 3. Read back CORDIC RDATA (It automatically stalls CPU if not ready yet) */
-    int32_t q31_cos = (int32_t)CORDIC->RDATA;
-    int32_t q31_sin = (int32_t)CORDIC->RDATA; /* Read sequence yields Cos then Sin */
-    
-    /* 4. Convert back to float [-1.0f to 1.0f] */
-    float32_t cos_t = (float32_t)q31_cos * 4.65661287e-10f; /* X * 2^-31 */
-    float32_t sin_t = (float32_t)q31_sin * 4.65661287e-10f;
-
-    /* 5. Complete Park Transform */
-    *i_d = (i_alpha * cos_t) + (i_beta * sin_t);
-    *i_q = (-i_alpha * sin_t) + (i_beta * cos_t);
+static inline void clarke_2ph(float32_t ia, float32_t ib,
+                               float32_t *i_alpha, float32_t *i_beta) {
+    *i_alpha = ia;
+    *i_beta  = (ia + 2.0f * ib) * 0.57735027f;   /* 1/sqrt(3) = 0.57735027 */
 }
 ```
+
+**Why this is simpler**: With the 2-phase KCL form, the $\frac{2}{3}$ factor cancels partially, giving $I_\alpha = I_A$ and $I_\beta = \frac{1}{\sqrt{3}}(I_A + 2 I_B)$. This is the standard production form used in most FOC libraries. The full 3-phase form is only needed when you want to cross-check all three ADC readings for fault detection.
+
+## 2. Park Transform (αβ Stationary → dq Rotating)
+
+- $I_d =  I_\alpha \cos(\theta) + I_\beta \sin(\theta)$
+- $I_q = -I_\alpha \sin(\theta) + I_\beta \cos(\theta)$
+
+## 3. Inverse Park Transform (dq → αβ)
+
+- $V_\alpha = V_d \cos(\theta) - V_q \sin(\theta)$
+- $V_\beta = V_d \sin(\theta) + V_q \cos(\theta)$
+
+Both Park and Inverse Park share the same sin/cos values. In a well-structured ISR, you compute sin/cos once (via CORDIC or FPU) and reuse for both directions.
+
+## 4. STM32G4 CORDIC Initialization & Configuration
+
+Before using the CORDIC coprocessor, it must be initialized once. The key registers:
+
+```c
+/**
+ * @brief Initialize CORDIC for sin/cos computation in FOC ISR.
+ *        Call once during system init, before any motor control starts.
+ *
+ *        Configuration:  Function = Cosine (outputs cos then sin)
+ *                        Precision = 6 iterations (20-bit accuracy, ~6 cycles)
+ *                        Input: 1 argument (angle only), 32-bit Q1.31
+ *                        Output: 2 results (cos + sin),   32-bit Q1.31
+ */
+void cordic_init_sincos(void) {
+
+    /* Enable CORDIC clock */
+    RCC->AHB1ENR |= RCC_AHB1ENR_CORDICEN;
+
+    /* Configure CSR register:
+     *   FUNC[3:0]    = 0b0000  → Cosine function (returns cos, then sin)
+     *   PRECISION[3:0] = 6     → 6 iterations (good balance: ~20-bit accuracy)
+     *   SCALE[2:0]   = 0       → No input scaling
+     *   NARGS        = 0       → 1 argument (angle only, modulus defaults to 1.0)
+     *   NRES         = 1       → 2 results (cos + sin)
+     *   ARGSIZE      = 0       → 32-bit input
+     *   RESSIZE      = 0       → 32-bit output
+     *
+     *   PRECISION trade-off: 4 iterations ≈ 13-bit, fast but noisy
+     *                         6 iterations ≈ 20-bit, good for FOC
+     *                         15 iterations = full 24-bit, rarely needed
+     */
+    CORDIC->CSR = (0u << CORDIC_CSR_FUNC_Pos)      /* Cosine function */
+               | (6u << CORDIC_CSR_PRECISION_Pos)   /* 6 iterations */
+               | (0u << CORDIC_CSR_SCALE_Pos)       /* No scaling */
+               | (0u << CORDIC_CSR_NARGS_Pos)       /* 1 argument */
+               | (1u << CORDIC_CSR_NRES_Pos)        /* 2 results (cos+sin) */
+               | (0u << CORDIC_CSR_ARGSIZE_Pos)     /* 32-bit arg */
+               | (0u << CORDIC_CSR_RESSIZE_Pos);    /* 32-bit result */
+}
+```
+
+## 5. CORDIC Asynchronous Park Transform (Production Pattern)
+
+The key production trick: write to CORDIC early in the ISR, do other work while it computes, then read results. The AHB bus stalls automatically if you read before computation finishes — no polling or interrupt needed.
+
+```c
+/* Q31 conversion constants — precomputed at compile time */
+#define RAD_TO_Q31      (683565275.576f)   /* 2^31 / PI */
+#define Q31_TO_FLOAT    (4.65661287e-10f)  /* 2^-31 */
+
+/**
+ * @brief  Asynchronous Park Transform using STM32G4 CORDIC.
+ *         CORDIC must be pre-initialized via cordic_init_sincos().
+ *
+ *         Production usage pattern:
+ *           1. cordic_write_angle(theta)     — fire-and-forget
+ *           2. ... do Clarke, ADC reads, protection checks ...
+ *           3. cordic_read_park(ia, ib, &id, &iq)  — collects results
+ */
+
+/** Step 1: Trigger CORDIC (non-blocking write) */
+static inline void cordic_write_angle(float32_t theta_rad) {
+    int32_t q31_angle = (int32_t)(theta_rad * RAD_TO_Q31);
+    CORDIC->WDATA = (uint32_t)q31_angle;
+    /* CPU is now free — CORDIC computes in background */
+}
+
+/** Step 2: Read CORDIC results, complete Park transform, and OUTPUT sin/cos
+ *          for reuse by Inverse Park (avoids recomputing trig). */
+static inline void cordic_read_park(float32_t i_alpha, float32_t i_beta,
+                                     float32_t *i_d, float32_t *i_q,
+                                     float32_t *cos_out, float32_t *sin_out) {
+    /* RDATA read auto-stalls if CORDIC not finished yet */
+    float32_t cos_t = (float32_t)((int32_t)CORDIC->RDATA) * Q31_TO_FLOAT;
+    float32_t sin_t = (float32_t)((int32_t)CORDIC->RDATA) * Q31_TO_FLOAT;
+
+    *i_d =  (i_alpha * cos_t) + (i_beta * sin_t);
+    *i_q = -(i_alpha * sin_t) + (i_beta * cos_t);
+
+    /* Return sin/cos for Inverse Park reuse */
+    *cos_out = cos_t;
+    *sin_out = sin_t;
+}
+
+/** Inverse Park using the SAME sin/cos from cordic_read_park */
+static inline void inv_park(float32_t v_d, float32_t v_q,
+                            float32_t cos_t, float32_t sin_t,
+                            float32_t *v_alpha, float32_t *v_beta) {
+    *v_alpha = (v_d * cos_t) - (v_q * sin_t);
+    *v_beta  = (v_d * sin_t) + (v_q * cos_t);
+}
+```
+
+### Typical ISR Pipeline (Production Flow)
+
+```
+ADC ISR Entry
+  │
+  ├─ 1. cordic_write_angle(theta_e)          ← CORDIC starts in background
+  ├─ 2. Read ADC results (Ia, Ib, Vbus)      ← CPU works while CORDIC runs
+  ├─ 3. clarke_2ph(Ia, Ib, &Ialpha, &Ibeta)
+  ├─ 4. Run protection checks (OCP software layer, Vbus OVP)
+  ├─ 5. cordic_read_park(Ialpha, Ibeta, &Id, &Iq, &cos_t, &sin_t)  ← Park + save trig
+  ├─ 6. foc_current_update(Id, Iq → Vd, Vq)
+  ├─ 7. inv_park(Vd, Vq, cos_t, sin_t → Valpha, Vbeta)
+  ├─ 8. svpwm_generate(Valpha, Vbeta → DutyU, DutyV, DutyW)
+  ├─ 9. dead_time_compensation()
+  └─ 10. Write TIM1->CCR1/2/3
+```
+
+This pipeline typically completes in 3–8 µs on STM32G4 at 170 MHz, depending on compiler optimization, flash wait states, and whether critical functions are placed in CCMRAM (`.ramfunc`).
