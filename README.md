@@ -41,6 +41,9 @@ The `references/` directory contains constraints for the following topics:
 - `gate-driver-and-power-stage-constraints.md`: UVLO, desat, bootstrap limits, MOSFET/IPM/SiC/GaN constraints, and SOA-aware fault handling.
 - `emi-emc-isolation-and-cabling.md`: common-mode current, shielding, grounding, isolation assumptions, encoder/cable robustness, and EMI validation.
 - `production-test-calibration-and-service.md`: self-test, calibration retention, end-of-line checks, field diagnostics, and service logging.
+- `safety-architecture-and-diagnostic-coverage.md`: safety boundaries, latched vs recoverable faults, watchdog layering, plausibility checks, and diagnostic coverage framing.
+- `mechanical-integration-and-servo-behavior.md`: homing, endstops, mechanical brake release, gearbox/backlash/compliance effects, and resonance-aware servo integration.
+- `firmware-lifecycle-and-update-strategy.md`: bootloader/update strategy, rollback, protocol compatibility, configuration migration, and release safety.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
