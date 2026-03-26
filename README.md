@@ -18,6 +18,8 @@ This repository is built as an **AI Control Framework**, not a template library.
 
 The `references/` directory contains constraints for the following topics:
 
+- `problem-oriented-reading-guide.md`: quick navigation by task or symptom, helping engineers and AI choose the right subset of references first.
+
 **A. Core Control & Algorithms**
 - `control-foc-loops.md`: Cascaded PI with anti-windup, MTPA LUT, Field Weakening voltage-feedback regulator.
 - `algorithm-svpwm-variants.md`: 7-segment (compact phase-projection & min-max methods), 5-segment DPWM, Overmodulation.

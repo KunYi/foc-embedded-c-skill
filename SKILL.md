@@ -127,6 +127,8 @@ Use these extensions when the product context requires them. They are not separa
 
 AI should consult the following domain-specific references when working on the corresponding topics. Fetch files as needed based on the user's request:
 
+- **`references/problem-oriented-reading-guide.md`** -> First-stop navigation by task or symptom: bring-up, ADC timing, startup failure, braking trouble, thermal issues, host-command problems, resonance, SIL boundaries, and application-specific reading paths.
+
 - **`references/auto-tuning-identification.md`** -> **[READ FOR UNKNOWN MOTORS]** Stator Resistance ($R_s$), High-frequency Inductance ($L_d, L_q$), Flux Linkage ($\Psi$), Pole Pairs identification, Zero-Pole Cancellation PI tuning, digital delay bandwidth limits.
 - **`references/emergency-protection-halt.md`** -> **[READ FIRST FOR FAULTS]** High-Z coasting vs Active Short Circuit (ASC) decision tree, HardFault handling, STM32G4 BDTR/OISx/OISxN safe-states, Overspeed logic.
 - **`references/control-foc-loops.md`** -> Cascaded Loops, PI Feed-Forward with anti-windup, MTPA LUT, Field Weakening voltage-feedback regulator, Bandwidth Rules (10:1 ratio).
