@@ -63,6 +63,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - **Debuggability Is a Feature**: Prefer designs that can explain themselves under failure. Logging, event snapshots, replayable traces, and explicit bring-up stages are part of product quality, not optional extras.
 - **Configuration Discipline Matters**: Treat parameter sets, calibration data, and product variants as governed artifacts. Do not assume the right constants will always be paired with the right hardware.
 - **Simulation Boundaries Must Be Honest**: Use SIL and model-based validation to test algorithms, transitions, and assumptions, but do not present them as proof of ADC timing, EMI robustness, gate-driver behavior, thermal safety, or real mechanical/application physics unless they have been hardware-correlated.
+- **Measure Before You Conclude**: Prefer trusted instrumentation, well-grounded captures, and symptom-driven domain narrowing over fast but fragile conclusions from a single waveform or log.
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Acceleration Philosophy**: Treat CORDIC and FMAC as first-class optimization tools, not dogma. On STM32G4 FOC projects, CORDIC is usually relevant and FMAC is often relevant because current, speed, observer, sensor, and compensator paths frequently include filtering. Use them when they improve real-time behavior without creating unacceptable observability, scaling, or safety-validation risk.
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
@@ -119,6 +120,8 @@ Use these extensions when the product context requires them. They are not separa
 23. **Pump Applications**: Read `pump-applications.md` when hydraulic load, flow/head variation, startup under load, or fluid-system transients shape the drive behavior.
 24. **Servo and Actuator Applications**: Read `servo-actuator-applications.md` when position quality, reversals, hold behavior, endstops, homing, or disturbance rejection dominate the product contract.
 25. **SIL and Model-Based Validation Boundaries**: Read `sil-and-model-based-validation-boundaries.md` when the team wants to use simulation or SIL without confusing algorithm verification with proof of real hardware behavior.
+26. **Measurement and Instrumentation Best Practices**: Read `measurement-and-instrumentation-best-practices.md` when oscilloscope, probe, DAC, or telemetry setup quality materially affects the conclusion.
+27. **Common Symptom to Debug Map**: Read `common-symptom-to-debug-map.md` when the engineer starts from a field symptom and needs to narrow it to sensing, control, power, application, or mechanical domains.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -157,6 +160,8 @@ AI should consult the following domain-specific references when working on the c
 - **`references/pump-applications.md`** -> Hydraulic load behavior, startup under head/load, ramp sanity, blocked or abnormal condition handling, and pump-specific validation.
 - **`references/servo-actuator-applications.md`** -> Trajectory quality, reversal shock, hold stability, endstop/homing behavior, and actuator-specific validation priorities.
 - **`references/sil-and-model-based-validation-boundaries.md`** -> What SIL is good for, what it cannot prove, model-fidelity levels, measured-parameter correlation, and how to distinguish algorithm validation from real physical validation.
+- **`references/measurement-and-instrumentation-best-practices.md`** -> Probe selection, grounding pitfalls, timing alignment, DAC/telemetry observability limits, and how to measure drive behavior without fooling yourself.
+- **`references/common-symptom-to-debug-map.md`** -> Symptom-driven debug triage, likely fault domains, first measurements to make, and what not to change prematurely.
 - **`references/sensorless-observers.md`** -> Sliding Mode Observer (SMO) with sigmoid boundary layer, BEMF extraction, Observer PLL Tracking with correct sign convention, convergence check, High-Frequency Injection (HFI).
 - **`references/position-sensors.md`** -> QEP Encoder speed estimation (M/T method), Hall Effect 60-degree angle interpolation and period-based speed, SPI Absolute Encoder delay compensation.
 - **`references/stm32g4-foc-hardware.md`** -> Dead-time distortion compensation (parameterized threshold), TIM1 center-aligned PWM initialization, TIM1_TRGO2/CCR4 ADC trigger, Internal OPAMP PGA, COMP→BRK fast trip, ADC dual-regular-simultaneous mode with DMA.
