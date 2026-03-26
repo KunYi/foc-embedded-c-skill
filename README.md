@@ -4,6 +4,8 @@ An AI skill focused on embedded C development for motor control and Field-Orient
 
 **Convention**: All references use the **amplitude-invariant** Clarke transform ($\frac{2}{3}$ scaling).
 
+**GitHub**: <https://github.com/KunYi/foc-embedded-c-skill>
+
 ## Core Philosophy
 
 This repository is built as an **AI Control Framework**, not a template library. It dictates:
@@ -45,6 +47,37 @@ The `references/` directory contains constraints for the following topics:
 - **STM32CubeMX**: Use for initial peripheral configuration (pin mapping, clock tree, timer/ADC setup). Export to CMake project.
 - **VSCode + Cortex-Debug + CMake**: Primary development environment. Supports OpenOCD / ST-Link / J-Link debugging.
 - **STM32CubeIDE**: Optional alternative, but the CMake-based workflow provides better CI/CD integration and team collaboration.
+
+## Basic Usage With AI Models
+
+Most modern large language models and agent frameworks can work with a repository-level `SKILL.md` pattern. This repository is organized so the model can read the top-level `SKILL.md` first, then pull in only the relevant files from `references/` based on the task.
+
+**Recommended usage pattern**:
+1. Place this repository where your AI tool can access it, or install it into the tool's shared skills/knowledge directory.
+2. Ask the model to use the repository as a `SKILL.md`-style engineering skill for FOC, STM32G4 motor control, or embedded drive firmware review.
+3. Let the model read `SKILL.md` first, then selectively load the relevant `references/*.md` files for the topic at hand.
+4. When asking for code or architecture help, provide concrete project constraints such as motor type, bus voltage, shunt topology, PWM frequency, sensing method, protection requirements, and MCU target.
+5. Ask the model to return both implementation guidance and bench-validation steps so the result stays grounded in real hardware behavior.
+
+**Typical prompt examples**:
+- "Use this `SKILL.md` repo to review my STM32G4 PMSM FOC current loop implementation."
+- "Using the attached skill, design a sensorless startup strategy for a 2-shunt inverter on STM32G4."
+- "Use this motor-control skill to explain the Hall interpolation math and how to validate it on hardware."
+- "Review this FOC protection flow against product-grade fault handling and bench verification requirements."
+
+**What the AI should do well with this repo**:
+- Explain control theory, embedded implementation trade-offs, and STM32G4 hardware constraints in a way that is useful for pair engineering.
+- Distinguish hard safety constraints from platform-specific preferences.
+- Propose product-grade validation steps using oscilloscope captures, logged telemetry, comparator trips, ADC timing checks, and thermal/protection tests.
+- Use `CORDIC`, `FMAC`, observers, sensing, and modulation references as engineering options, not blind rules.
+
+## License
+
+This project is released under the `MIT` License.
+
+Copyright (c) 2026 KUNYI CHEN `<kunyi.chen@gmail.com>`
+
+See [LICENSE](/tmp/foc-drive-skill/LICENSE) for the full text.
 
 ## Future Roadmap
 - Complete the `.vscode` settings and `CMakeLists.txt` open-source build skeleton.
