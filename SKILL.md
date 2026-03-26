@@ -60,6 +60,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - **Abuse-Case Mindset**: Judge the design by its behavior under sensor dropouts, bus faults, stale commands, bad unit assumptions, and real fault injection, not only by nominal closed-loop performance.
 - **Customer-Perceived Quality Matters**: A mathematically stable drive may still fail as a product if it whistles, chatters, or excites resonance. Treat NVH, acoustic behavior, and transition smoothness as real design outputs when relevant.
 - **Application Reality Matters**: Do not assume all loads behave like benign bench motors. Compressors, pumps, geared axes, and resonant structures may require operating maps, speed avoidance, gain scheduling, or cross-domain diagnosis.
+- **Debuggability Is a Feature**: Prefer designs that can explain themselves under failure. Logging, event snapshots, replayable traces, and explicit bring-up stages are part of product quality, not optional extras.
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Acceleration Philosophy**: Treat CORDIC and FMAC as first-class optimization tools, not dogma. On STM32G4 FOC projects, CORDIC is usually relevant and FMAC is often relevant because current, speed, observer, sensor, and compensator paths frequently include filtering. Use them when they improve real-time behavior without creating unacceptable observability, scaling, or safety-validation risk.
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
@@ -109,6 +110,8 @@ Use these extensions when the product context requires them. They are not separa
 16. **Motor and Load Characterization**: Read `motor-and-load-characterization.md` when real load inertia, friction, compliance, resonance, or application envelope matter to tuning claims.
 17. **Resonance and Speed-Avoidance Strategy**: Read `resonance-identification-and-speed-avoidance.md` when issues occur only in narrow speed or operating bands and the product may need forbidden-speed regions, notch filters, or fast-crossing logic.
 18. **Compressor and Refrigeration Applications**: Read `compressor-and-refrigeration-drive-applications.md` when the load depends on suction/discharge pressure, compression ratio, or other refrigeration operating-point variables.
+19. **Data Logging and Replay Workflow**: Read `data-logging-replay-and-diagnostics-workflow.md` when the team needs reproducible fault diagnosis, event snapshots, field-return analysis, or structured debug traces.
+20. **Commissioning and Bring-Up Playbook**: Read `commissioning-and-bring-up-playbook.md` when the board, motor, or control stack is new and the engineer needs a safe staged validation path before closing loops.
 
 ## Reference Documents (Knowledge Base Index)
 
@@ -140,6 +143,8 @@ AI should consult the following domain-specific references when working on the c
 - **`references/motor-and-load-characterization.md`** -> Inertia, friction, compliance, resonance, operating-envelope characterization, and why tuning on a free motor is not enough.
 - **`references/resonance-identification-and-speed-avoidance.md`** -> Narrow-band vibration diagnosis, electrical/mechanical/order tracking, forbidden-speed and fast-crossing strategies, and resonance mitigation validation.
 - **`references/compressor-and-refrigeration-drive-applications.md`** -> Pressure-dependent load behavior, compressor pulsation, correlated pressure/current/vibration logging, and operating-map-based mitigation for refrigeration systems.
+- **`references/data-logging-replay-and-diagnostics-workflow.md`** -> Event-triggered snapshots, minimum useful log sets, replay mindset, diagnostic classification, and service-friendly debug workflow expectations.
+- **`references/commissioning-and-bring-up-playbook.md`** -> Safe first-power sequence, staged loop enablement, PWM/sensing validation order, common bring-up failure patterns, and what must be proven before moving on.
 - **`references/sensorless-observers.md`** -> Sliding Mode Observer (SMO) with sigmoid boundary layer, BEMF extraction, Observer PLL Tracking with correct sign convention, convergence check, High-Frequency Injection (HFI).
 - **`references/position-sensors.md`** -> QEP Encoder speed estimation (M/T method), Hall Effect 60-degree angle interpolation and period-based speed, SPI Absolute Encoder delay compensation.
 - **`references/stm32g4-foc-hardware.md`** -> Dead-time distortion compensation (parameterized threshold), TIM1 center-aligned PWM initialization, TIM1_TRGO2/CCR4 ADC trigger, Internal OPAMP PGA, COMP→BRK fast trip, ADC dual-regular-simultaneous mode with DMA.

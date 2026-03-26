@@ -53,6 +53,8 @@ The `references/` directory contains constraints for the following topics:
 - `motor-and-load-characterization.md`: inertia/friction/compliance characterization, resonance awareness, and why tuning on a free motor is not enough.
 - `resonance-identification-and-speed-avoidance.md`: narrow-band vibration diagnosis, forbidden-speed strategy, and resonance mitigation validation.
 - `compressor-and-refrigeration-drive-applications.md`: pressure-dependent compressor loads, correlated pressure/current/vibration analysis, and operating-map-based mitigation.
+- `data-logging-replay-and-diagnostics-workflow.md`: event snapshots, replay mindset, diagnostic classification, and field-friendly debug workflow.
+- `commissioning-and-bring-up-playbook.md`: staged first-power validation, safe loop-enablement order, and common bring-up failure patterns.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
@@ -95,6 +97,8 @@ Most modern large language models and agent frameworks can work with a repositor
 - Recognize when tuning claims depend on the real load, not only the bare motor.
 - Help the team reason about qualification-style disturbance behavior and repeatable product evidence.
 - Diagnose coupled application problems such as pressure-dependent compressor vibration instead of assuming every symptom is a generic PI issue.
+- Provide a usable debug workflow with event-triggered logging and replay-oriented diagnosis, not just advice to print more variables.
+- Guide staged commissioning so engineers know what must be proven before they energize the next control layer.
 
 ## License
 
