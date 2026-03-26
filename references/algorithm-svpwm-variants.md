@@ -21,6 +21,13 @@ This formulation determines the sector by computing projections that are algebra
 **Mathematical equivalence**: $X = V_\beta$, $Y = \frac{\sqrt{3} V_\beta + V_\alpha}{2} = -V_c$, $Z = \frac{\sqrt{3} V_\beta - V_\alpha}{2} = V_b$. These three values partition the $\alpha\beta$-plane into 6 sectors identically to the standard hexagonal-axis formulation, merely expressed in a rotated and scaled basis. The sector map and $T_1, T_2$ assignments below are matched to this basis.
 
 ```c
+#include <stdint.h>
+
+#define FOC_SQRT3 (1.73205081f)
+#define FOC_HALF  (0.5f)
+#define FOC_ONE   (1.0f)
+#define FOC_ZERO  (0.0f)
+
 /**
  * @brief Transform V_alpha/V_beta into 7-Segment SVPWM Duty Cycles (Center Aligned)
  *
@@ -29,86 +36,68 @@ This formulation determines the sector by computing projections that are algebra
  *
  * Convention: Amplitude-invariant Clarke. Input V_alpha/V_beta are in volts.
  */
-void svpwm_generate(float32_t v_alpha, float32_t v_beta, float32_t v_dc, 
-                    float32_t *duty_u, float32_t *duty_v, float32_t *duty_w) {
+__attribute__((always_inline)) static inline void svpwm_generate(
+                    const float32_t v_alpha, const float32_t v_beta, const float32_t v_dc, 
+                    float32_t * const duty_u, float32_t * const duty_v, float32_t * const duty_w) {
                     
-    /* 1. Calculate Phase Projections X, Y, Z
-     *    X = Vβ
-     *    Y = (√3·Vβ + Vα) / 2  ≡ -Vc  (negated phase-C voltage)
-     *    Z = (√3·Vβ - Vα) / 2  ≡  Vb  (phase-B voltage)
-     *
-     *    This is algebraically equivalent to projecting onto the three
-     *    hexagonal axes, but saves one multiply by sharing √3·Vβ.
-     */
-    float32_t sqrt3_v_beta = 1.73205081f * v_beta;
-    float32_t X = v_beta;
-    float32_t Y = (sqrt3_v_beta + v_alpha) * 0.5f;
-    float32_t Z = (sqrt3_v_beta - v_alpha) * 0.5f;
+    /* 1. Calculate Phase Projections X, Y, Z */
+    const float32_t sqrt3_v_beta = FOC_SQRT3 * v_beta;
+    const float32_t X = v_beta;
+    const float32_t Y = (sqrt3_v_beta + v_alpha) * FOC_HALF;
+    const float32_t Z = (sqrt3_v_beta - v_alpha) * FOC_HALF;
 
-    /* 2. Determine Sector (1 to 6) based on Signs of X, Y, Z
-     *    The sign pattern maps uniquely to one of 6 sectors.
-     *    Encoding: N = 4·sign(X) + 2·sign(Y) + sign(Z), where sign>0 => 1.
-     */
-    uint8_t A = (X > 0.0f) ? 1 : 0;
-    uint8_t B = (Y > 0.0f) ? 1 : 0;
-    uint8_t C = (Z > 0.0f) ? 1 : 0;
+    /* 2. Determine Sector (1 to 6) based on Signs of X, Y, Z */
+    const uint8_t a = (X > FOC_ZERO) ? 1u : 0u;
+    const uint8_t b = (Y > FOC_ZERO) ? 1u : 0u;
+    const uint8_t c = (Z > FOC_ZERO) ? 1u : 0u;
     
-    static const uint8_t sector_map[8] = {0, 2, 6, 1, 4, 3, 5, 0}; 
-    uint8_t sector = sector_map[(A << 2) | (B << 1) | C];
+    static const uint8_t sector_map[8] = {0u, 2u, 6u, 1u, 4u, 3u, 5u, 0u}; 
+    const uint8_t sector = sector_map[(a << 2u) | (b << 1u) | c];
 
-    /* 3. Calculate Active Vector times T1, T2
-     *    These are un-normalized (in voltage units, proportional to Vdc).
-     *    The switch-case selects the appropriate pair of projections
-     *    for each sector, consistent with the X/Y/Z basis above.
-     */
-    float32_t t1, t2;
+    /* 3. Calculate Active Vector times T1, T2 */
+    float32_t t1 = FOC_ZERO;
+    float32_t t2 = FOC_ZERO;
+    
     switch(sector) {
-        case 1: t1 = Z;  t2 = Y;  break;
-        case 2: t1 = Y;  t2 = -X; break;
-        case 3: t1 = -Z; t2 = X;  break;
-        case 4: t1 = -X; t2 = Z;  break;
-        case 5: t1 = X;  t2 = -Y; break;
-        case 6: t1 = -Y; t2 = -Z; break;
-        default: t1 = 0; t2 = 0; break;
+        case 1u: t1 = Z;  t2 = Y;  break;
+        case 2u: t1 = Y;  t2 = -X; break;
+        case 3u: t1 = -Z; t2 = X;  break;
+        case 4u: t1 = -X; t2 = Z;  break;
+        case 5u: t1 = X;  t2 = -Y; break;
+        case 6u: t1 = -Y; t2 = -Z; break;
+        default: 
+            /* ARM-GCC optimization: tell compiler this is a bounded 1..6 logic */
+            __builtin_unreachable();
     }
 
-    /* 4. Normalize and Overmodulation clamp
-     *    T1 and T2 are currently in voltage units. Normalize by Vdc
-     *    to get time fractions relative to the switching period Ts.
-     *    In the linear region: (t1 + t2) / Vdc <= 1.0.
-     *    If exceeded, proportionally scale both to preserve angle
-     *    while saturating magnitude at the hexagon boundary.
-     */
-    float32_t inv_vdc = 1.0f / v_dc;
+    /* 4. Normalize and Overmodulation clamp */
+    const float32_t inv_vdc = FOC_ONE / v_dc;
     t1 *= inv_vdc;
     t2 *= inv_vdc;
     
-    float32_t t_sum = t1 + t2;
-    if (t_sum > 1.0f) {
-        float32_t scale = 1.0f / t_sum;
+    const float32_t t_sum = t1 + t2;
+    if (t_sum > FOC_ONE) {
+        const float32_t scale = FOC_ONE / t_sum;
         t1 *= scale;
         t2 *= scale;
     }
 
     /* 5. Determine Zero Vector time (T0 / 2) for symmetric 7-segment */
-    float32_t t_zero_half = (1.0f - t1 - t2) * 0.5f;
+    const float32_t t_zero_half = (FOC_ONE - t1 - t2) * FOC_HALF;
 
-    /* 6. Assign duties for Center-Aligned symmetric PWM (0.0 to 1.0)
-     *    ta <= tb <= tc represent the three duty levels.
-     *    The switch maps them to the correct phases per sector.
-     */
-    float32_t ta = t_zero_half;
-    float32_t tb = t_zero_half + t1;
-    float32_t tc = t_zero_half + t1 + t2;
+    /* 6. Assign duties for Center-Aligned symmetric PWM (0.0 to 1.0) */
+    const float32_t ta = t_zero_half;
+    const float32_t tb = t_zero_half + t1;
+    const float32_t tc = t_zero_half + t1 + t2;
 
     switch(sector) {
-        case 1: *duty_u = tb; *duty_v = ta; *duty_w = tc; break;
-        case 2: *duty_u = ta; *duty_v = tc; *duty_w = tb; break;
-        case 3: *duty_u = ta; *duty_v = tb; *duty_w = tc; break;
-        case 4: *duty_u = tc; *duty_v = tb; *duty_w = ta; break;
-        case 5: *duty_u = tc; *duty_v = ta; *duty_w = tb; break;
-        case 6: *duty_u = tb; *duty_v = tc; *duty_w = ta; break;
-        default: *duty_u = 0.5f; *duty_v = 0.5f; *duty_w = 0.5f; break;
+        case 1u: *duty_u = tb; *duty_v = ta; *duty_w = tc; break;
+        case 2u: *duty_u = ta; *duty_v = tc; *duty_w = tb; break;
+        case 3u: *duty_u = ta; *duty_v = tb; *duty_w = tc; break;
+        case 4u: *duty_u = tc; *duty_v = tb; *duty_w = ta; break;
+        case 5u: *duty_u = tc; *duty_v = ta; *duty_w = tb; break;
+        case 6u: *duty_u = tb; *duty_v = tc; *duty_w = ta; break;
+        default: __builtin_unreachable();
     }
 }
 ```
@@ -135,28 +124,68 @@ A mathematically equivalent but branch-free alternative to the sector-based SVPW
 /**
  * @brief Simplified SVPWM via min-max zero-sequence injection.
  *        Produces the same output as 7-Segment SVPWM.
- *        Preferred when sector information is not needed downstream
- *        (e.g., 3-shunt sensing that doesn't depend on sector for reconstruction).
+ *        Preferred when sector information is not needed downstream.
  */
-void svpwm_minmax(float32_t v_alpha, float32_t v_beta, float32_t v_dc,
-                  float32_t *duty_u, float32_t *duty_v, float32_t *duty_w) {
+__attribute__((always_inline)) static inline void svpwm_minmax(
+                            const float32_t v_alpha, const float32_t v_beta, const float32_t v_dc,
+                            float32_t * const duty_u, float32_t * const duty_v, float32_t * const duty_w) {
 
-    /* Inverse Clarke (amplitude-invariant) to get phase voltages */
-    float32_t v_u = v_alpha;
-    float32_t v_v = (-0.5f * v_alpha) + (0.86602540f * v_beta);
-    float32_t v_w = (-0.5f * v_alpha) - (0.86602540f * v_beta);
+    /* Inverse Clarke (amplitude-invariant) */
+    const float32_t v_u = v_alpha;
+    const float32_t v_v = (-FOC_HALF * v_alpha) + (0.86602540f * v_beta);
+    const float32_t v_w = (-FOC_HALF * v_alpha) - (0.86602540f * v_beta);
 
     /* Zero-sequence injection: center the waveform in [0, Vdc] */
-    float32_t v_min = fminf(fminf(v_u, v_v), v_w);
-    float32_t v_max = fmaxf(fmaxf(v_u, v_v), v_w);
-    float32_t v_offset = -(v_max + v_min) * 0.5f;
+    const float32_t v_min = fminf(fminf(v_u, v_v), v_w);
+    const float32_t v_max = fmaxf(fmaxf(v_u, v_v), v_w);
+    const float32_t v_offset = -(v_max + v_min) * FOC_HALF;
 
     /* Normalize to [0, 1] duty range */
-    float32_t inv_vdc = 1.0f / v_dc;
-    *duty_u = (v_u + v_offset) * inv_vdc + 0.5f;
-    *duty_v = (v_v + v_offset) * inv_vdc + 0.5f;
-    *duty_w = (v_w + v_offset) * inv_vdc + 0.5f;
+    const float32_t inv_vdc = FOC_ONE / v_dc;
+    *duty_u = (v_u + v_offset) * inv_vdc + FOC_HALF;
+    *duty_v = (v_v + v_offset) * inv_vdc + FOC_HALF;
+    *duty_w = (v_w + v_offset) * inv_vdc + FOC_HALF;
 }
 ```
 
 **Trade-off**: The min-max method is simpler and branchless, but does NOT produce sector information. If your firmware needs the current sector number for current reconstruction (1-shunt, 2-shunt) or for DPWM switching, use the sector-based method from Section 2 instead.
+
+## 5. Software Dead-Time Compensation
+
+Dead-time protects the inverter phase legs from shoot-through but causes a voltage error vector opposing the direction of phase current. A world-class drive injects a feed-forward compensation voltage before the Park/Inverse-Park transforms to cancel this distortion.
+
+```c
+/**
+ * @brief Injects software dead-time compensation into target phase voltages.
+ *        Runs BEFORE the Inverse Park or SVPWM block for each phase.
+ *
+ * @param v_target       Target Phase voltage (from Inverse Clarke/Park or direct)
+ * @param i_meas         Measured Phase current
+ * @param v_dead_comp    Pre-calculated dead-time error magnitude: (T_dead / T_pwm) * V_dc
+ * @param i_threshold    Noise threshold to avoid compensation chatter at zero-crossing
+ * @return               Compensated target voltage
+ */
+__attribute__((always_inline)) static inline float32_t svpwm_dead_time_compensate(
+    const float32_t v_target,
+    const float32_t i_meas,
+    const float32_t v_dead_comp,
+    const float32_t i_threshold) {
+
+    float32_t v_comp = FOC_ZERO;
+
+    if (i_meas > i_threshold) {
+        v_comp = v_dead_comp;
+    } else if (i_meas < -i_threshold) {
+        v_comp = -v_dead_comp;
+    } else {
+        /* Linearly interpolate through the zero-crossing to prevent acoustic noise 
+           caused by the sign() flip triggering back and forth on AD noise. */
+        v_comp = v_dead_comp * (i_meas / i_threshold);
+    }
+
+    return v_target + v_comp;
+}
+```
+
+> [!TIP]
+> Do not aggressively compensate dead-time during initial tuning. Verify the base current waveforms first. If sensing noise is high, the `sign()` flip will inject violent voltage transients at the zero-crossings, worsening THD instead of improving it.

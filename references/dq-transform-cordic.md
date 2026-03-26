@@ -16,6 +16,8 @@ The implementation examples below show common STM32G4 production patterns. Use C
 **Production Simplification**: In a balanced 3-phase system ($I_A + I_B + I_C = 0$), you only need 2 ADC readings. Substituting $I_C = -(I_A + I_B)$:
 
 ```c
+#define FOC_INV_SQRT3 (0.57735027f)
+
 /**
  * @brief Clarke transform using only 2 measured phase currents.
  *        Uses Kirchhoff's Current Law: Ic = -(Ia + Ib)
@@ -25,10 +27,11 @@ The implementation examples below show common STM32G4 production patterns. Use C
  *        constant into the PI gains to save 2 multiplies per ISR.
  *        If you do that, document it and ensure SVPWM input scaling matches.
  */
-static inline void clarke_2ph(float32_t ia, float32_t ib,
-                               float32_t *i_alpha, float32_t *i_beta) {
+__attribute__((always_inline)) static inline void clarke_2ph(
+                               const float32_t ia, const float32_t ib,
+                               float32_t * const i_alpha, float32_t * const i_beta) {
     *i_alpha = ia;
-    *i_beta  = (ia + 2.0f * ib) * 0.57735027f;   /* 1/sqrt(3) = 0.57735027 */
+    *i_beta  = (ia + 2.0f * ib) * FOC_INV_SQRT3;
 }
 ```
 
@@ -94,8 +97,8 @@ The key production trick: write to CORDIC early in the ISR, do other work while 
 
 ```c
 /* Q31 conversion constants — precomputed at compile time */
-#define RAD_TO_Q31      (683565275.576f)   /* 2^31 / PI */
-#define Q31_TO_FLOAT    (4.65661287e-10f)  /* 2^-31 */
+#define CORDIC_RAD_TO_Q31      (683565275.576f)   /* 2^31 / PI */
+#define CORDIC_Q31_TO_FLOAT    (4.65661287e-10f)  /* 2^-31 */
 
 /**
  * @brief  Asynchronous Park Transform using STM32G4 CORDIC.
@@ -108,20 +111,22 @@ The key production trick: write to CORDIC early in the ISR, do other work while 
  */
 
 /** Step 1: Trigger CORDIC (non-blocking write) */
-static inline void cordic_write_angle(float32_t theta_rad) {
-    int32_t q31_angle = (int32_t)(theta_rad * RAD_TO_Q31);
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void cordic_write_angle(
+                                                                    const float32_t theta_rad) {
+    const int32_t q31_angle = (int32_t)(theta_rad * CORDIC_RAD_TO_Q31);
     CORDIC->WDATA = (uint32_t)q31_angle;
     /* CPU is now free — CORDIC computes in background */
 }
 
 /** Step 2: Read CORDIC results, complete Park transform, and OUTPUT sin/cos
  *          for reuse by Inverse Park (avoids recomputing trig). */
-static inline void cordic_read_park(float32_t i_alpha, float32_t i_beta,
-                                     float32_t *i_d, float32_t *i_q,
-                                     float32_t *cos_out, float32_t *sin_out) {
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void cordic_read_park(
+                                     const float32_t i_alpha, const float32_t i_beta,
+                                     float32_t * const i_d, float32_t * const i_q,
+                                     float32_t * const cos_out, float32_t * const sin_out) {
     /* RDATA read auto-stalls if CORDIC not finished yet */
-    float32_t cos_t = (float32_t)((int32_t)CORDIC->RDATA) * Q31_TO_FLOAT;
-    float32_t sin_t = (float32_t)((int32_t)CORDIC->RDATA) * Q31_TO_FLOAT;
+    const float32_t cos_t = (float32_t)((int32_t)CORDIC->RDATA) * CORDIC_Q31_TO_FLOAT;
+    const float32_t sin_t = (float32_t)((int32_t)CORDIC->RDATA) * CORDIC_Q31_TO_FLOAT;
 
     *i_d =  (i_alpha * cos_t) + (i_beta * sin_t);
     *i_q = -(i_alpha * sin_t) + (i_beta * cos_t);
@@ -132,9 +137,10 @@ static inline void cordic_read_park(float32_t i_alpha, float32_t i_beta,
 }
 
 /** Inverse Park using the SAME sin/cos from cordic_read_park */
-static inline void inv_park(float32_t v_d, float32_t v_q,
-                            float32_t cos_t, float32_t sin_t,
-                            float32_t *v_alpha, float32_t *v_beta) {
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void inv_park(
+                            const float32_t v_d, const float32_t v_q,
+                            const float32_t cos_t, const float32_t sin_t,
+                            float32_t * const v_alpha, float32_t * const v_beta) {
     *v_alpha = (v_d * cos_t) - (v_q * sin_t);
     *v_beta  = (v_d * sin_t) + (v_q * cos_t);
 }

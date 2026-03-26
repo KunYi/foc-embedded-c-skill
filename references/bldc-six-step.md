@@ -21,6 +21,8 @@ Six-step (trapezoidal) commutation is the simplest and most common control metho
 Three Hall sensors placed 120° apart provide 6 valid states per electrical revolution. Each state directly maps to which pair of FETs to drive.
 
 ```c
+#include <stdint.h>
+
 /**
  * @brief Hall sensor state to commutation pattern mapping.
  *
@@ -40,23 +42,17 @@ typedef struct {
 /* Standard 120° Hall placement — CW rotation.
  * Index 0 and 7 are invalid Hall states (fault). */
 static const commutation_step_t comm_table[8] = {
-    /*  H3H2H1  High   Low     Active phases  */
-    {0, 0},  /* 000 — INVALID (sensor fault) */
-    {3, 2},  /* 001 — W→V */
-    {1, 3},  /* 010 — U→W */
-    {1, 2},  /* 011 — U→V */
-    {2, 1},  /* 100 — V→U */
-    {3, 1},  /* 101 — W→U */
-    {2, 3},  /* 110 — V→W */
-    {0, 0},  /* 111 — INVALID (sensor fault) */
+    /*   H3H2H1    High   Low     Active phases  */
+    {0u, 0u},  /* 000 — INVALID (sensor fault) */
+    {3u, 2u},  /* 001 — W→V */
+    {1u, 3u},  /* 010 — U→W */
+    {1u, 2u},  /* 011 — U→V */
+    {2u, 1u},  /* 100 — V→U */
+    {3u, 1u},  /* 101 — W→U */
+    {2u, 3u},  /* 110 — V→W */
+    {0u, 0u},  /* 111 — INVALID (sensor fault) */
 };
-```
 
-### STM32G4 Implementation with TIM1 COM Event
-
-STM32 advanced timers support **automatic commutation** via the COM (Commutation) event. This is the production approach — it ensures the new PWM pattern is applied synchronously with the timer update, preventing glitches.
-
-```c
 /**
  * @brief Apply commutation step to TIM1 outputs.
  *        Uses forced output mode for the floating phase and PWM for the active phases.
@@ -67,22 +63,25 @@ STM32 advanced timers support **automatic commutation** via the COM (Commutation
  *        Call this from the Hall sensor edge interrupt. The actual output change
  *        is deferred to the next TIM1 COM event for glitch-free switching.
  */
-void bldc_apply_commutation(uint8_t hall_state, float32_t duty) {
+__attribute__((section(".ramfunc")))
+void bldc_apply_commutation(const uint8_t hall_state, const float32_t duty) {
 
-    const commutation_step_t *step = &comm_table[hall_state];
+    const commutation_step_t * const step = &comm_table[hall_state & 0x07u];
 
     /* Validate Hall state */
-    if (step->high_phase == 0 || step->low_phase == 0) {
+    if (__builtin_expect(!!(step->high_phase == 0u || step->low_phase == 0u), 0)) {
         /* Invalid Hall state — fault */
         TIM1->BDTR &= ~TIM_BDTR_MOE;  /* Disable all outputs */
         g_foc_state = FOC_STATE_FAULT;
         return;
+    } else {
+        /* Valid Hall state */
     }
 
-    uint16_t ccr_val = (uint16_t)(duty * (float32_t)TIM1->ARR);
+    const uint16_t ccr_val = (uint16_t)(duty * (float32_t)TIM1->ARR);
 
     /* Start with all channels disabled */
-    uint32_t ccer = 0;
+    uint32_t ccer = 0u;
     uint32_t ccmr1 = TIM1->CCMR1 & ~(TIM_CCMR1_OC1M_Msk | TIM_CCMR1_OC2M_Msk);
     uint32_t ccmr2 = TIM1->CCMR2 & ~(TIM_CCMR2_OC3M_Msk);
 
@@ -90,44 +89,47 @@ void bldc_apply_commutation(uint8_t hall_state, float32_t duty) {
     /* Set active low-side channel: Forced active (100% ON), N-output enabled */
     /* Floating channel: outputs disabled (Hi-Z) */
 
-    for (uint8_t phase = 1; phase <= 3; phase++) {
+    for (uint8_t phase = 1u; phase <= 3u; phase++) {
         if (phase == step->high_phase) {
             /* PWM on main channel (high-side via gate driver) */
             switch (phase) {
-                case 1:
+                case 1u:
                     ccmr1 |= (6u << TIM_CCMR1_OC1M_Pos);  /* PWM Mode 1 */
                     ccer |= TIM_CCER_CC1E;
                     TIM1->CCR1 = ccr_val;
                     break;
-                case 2:
+                case 2u:
                     ccmr1 |= (6u << TIM_CCMR1_OC2M_Pos);
                     ccer |= TIM_CCER_CC2E;
                     TIM1->CCR2 = ccr_val;
                     break;
-                case 3:
+                case 3u:
                     ccmr2 |= (6u << TIM_CCMR2_OC3M_Pos);
                     ccer |= TIM_CCER_CC3E;
                     TIM1->CCR3 = ccr_val;
                     break;
+                default: __builtin_unreachable();
             }
         } else if (phase == step->low_phase) {
             /* Force low-side ON (complementary output active, main forced inactive) */
             switch (phase) {
-                case 1:
+                case 1u:
                     ccmr1 |= (4u << TIM_CCMR1_OC1M_Pos);  /* Forced inactive (high OFF) */
-                    ccer |= TIM_CCER_CC1NE;                 /* Low-side N-channel ON */
+                    ccer |= TIM_CCER_CC1NE;               /* Low-side N-channel ON */
                     break;
-                case 2:
+                case 2u:
                     ccmr1 |= (4u << TIM_CCMR1_OC2M_Pos);
                     ccer |= TIM_CCER_CC2NE;
                     break;
-                case 3:
+                case 3u:
                     ccmr2 |= (4u << TIM_CCMR2_OC3M_Pos);
                     ccer |= TIM_CCER_CC3NE;
                     break;
+                default: __builtin_unreachable();
             }
+        } else {
+            /* Floating phase: no bits set → Hi-Z */
         }
-        /* Floating phase: no bits set → Hi-Z */
     }
 
     TIM1->CCMR1 = ccmr1;
@@ -163,15 +165,16 @@ When Hall sensors are not available, the back-EMF zero-crossing on the floating 
  */
 
 /* Called from COMP IRQ when zero-crossing is detected */
+__attribute__((section(".ramfunc")))
 void COMP_IRQHandler(void) {
-    uint32_t capture_time = TIM2->CCR1;  /* Input capture timestamp */
+    const uint32_t capture_time = TIM2->CCR1;  /* Input capture timestamp */
 
     /* Calculate time since last commutation */
-    uint32_t period = capture_time - g_last_comm_time;
+    const uint32_t period = capture_time - g_last_comm_time;
 
     /* 30° delay = half of one 60° step period
      * Next commutation = zero_crossing + period/2 */
-    uint32_t delay_30deg = period >> 1;
+    const uint32_t delay_30deg = period >> 1u;
 
     /* Schedule next commutation via compare interrupt */
     TIM2->CCR2 = capture_time + delay_30deg;
@@ -182,13 +185,16 @@ void COMP_IRQHandler(void) {
 }
 
 /* TIM2_CC2 fires at the 30° delay point → commutate */
+__attribute__((section(".ramfunc")))
 void TIM2_IRQHandler(void) {
-    if (TIM2->SR & TIM_SR_CC2IF) {
-        TIM2->SR = ~TIM_SR_CC2IF;
+    if ((TIM2->SR & TIM_SR_CC2IF) != 0u) {
+        TIM2->SR = ~(uint32_t)TIM_SR_CC2IF;
 
-        g_bldc_step = (g_bldc_step % 6) + 1;
+        g_bldc_step = (g_bldc_step % 6u) + 1u;
         bldc_apply_commutation(g_bldc_step, g_duty);
         g_last_comm_time = TIM2->CCR2;
+    } else {
+        /* Unhandled interrupt source */
     }
 }
 ```

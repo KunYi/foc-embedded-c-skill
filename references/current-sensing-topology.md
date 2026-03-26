@@ -45,13 +45,14 @@ You MUST place a hardware low-pass RC filter before the OPAMP to smooth out PWM 
  *        for a valid ADC reading, the firmware must use the other measured
  *        phase + the previously computed KCL value, or shift the PWM pattern.
  */
-void two_shunt_reconstruct(float32_t adc_ia, float32_t adc_ib, uint8_t svpwm_sector,
-                            float32_t *ia_out, float32_t *ib_out, float32_t *ic_out) {
+__attribute__((always_inline)) static inline void two_shunt_reconstruct(
+                            const float32_t adc_ia, const float32_t adc_ib, const uint8_t svpwm_sector,
+                            float32_t * const ia_out, float32_t * const ib_out, float32_t * const ic_out) {
 
     /* Default: both ADC readings are valid */
-    float32_t ia = adc_ia;
-    float32_t ib = adc_ib;
-    float32_t ic = -(ia + ib);
+    const float32_t ia = adc_ia;
+    const float32_t ib = adc_ib;
+    const float32_t ic = -(ia + ib);
 
     /* Sector-dependent validity check:
      * In certain sectors, one of the measured phases has very short
@@ -66,13 +67,54 @@ void two_shunt_reconstruct(float32_t adc_ia, float32_t adc_ib, uint8_t svpwm_sec
      *   Invalid Ia: Ia = -(Ib + Ic_prev)  (use last known Ic)
      *   Invalid Ib: Ib = -(Ia + Ic_prev)
      *
-     * Better approach: enforce minimum pulse width on the measured phases,
-     * or use asymmetric PWM shifting to guarantee a valid sampling window.
+     * Better approach: enforce minimum pulse width on the measured phases
+     * BEFORE generating PWM, ensuring valid ADC reads across all sectors.
      */
 
     *ia_out = ia;
     *ib_out = ib;
     *ic_out = ic;
+}
+
+/**
+ * @brief Clamps the SVPWM duty cycles to guarantee minimum ADC sampling time.
+ *        Required for 2-shunt and 3-shunt topologies to avoid blind zones.
+ *        Run this AFTER svpwm_generate() and BEFORE loading timer CCRs.
+ *
+ * @param duty_u, duty_v, duty_w  Pointers to the calculated duty cycles (0.0 to 1.0)
+ * @param min_duty                Minimum duty cycle required by hardware (e.g., 0.05f for 5%)
+ * @param max_duty                Maximum duty cycle (e.g., 0.95f for 95%)
+ */
+__attribute__((always_inline)) static inline void svpwm_clamp_duty(
+    float32_t * const duty_u, float32_t * const duty_v, float32_t * const duty_w,
+    const float32_t min_duty, const float32_t max_duty) {
+
+    /* Clamp Phase U */
+    if (*duty_u < min_duty) {
+        *duty_u = min_duty;
+    } else if (*duty_u > max_duty) {
+        *duty_u = max_duty;
+    } else {
+        /* MISRA C: Empty else branch for documented intentional fallthrough */
+    }
+
+    /* Clamp Phase V */
+    if (*duty_v < min_duty) {
+        *duty_v = min_duty;
+    } else if (*duty_v > max_duty) {
+        *duty_v = max_duty;
+    } else {
+        /* Intentional fallthrough */
+    }
+
+    /* Clamp Phase W */
+    if (*duty_w < min_duty) {
+        *duty_w = min_duty;
+    } else if (*duty_w > max_duty) {
+        *duty_w = max_duty;
+    } else {
+        /* Intentional fallthrough */
+    }
 }
 ```
 

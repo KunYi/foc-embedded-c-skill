@@ -40,24 +40,25 @@ typedef struct {
  * @param  v_alpha, v_beta: Applied stator voltages (from inverse Park output)
  * @param  i_alpha, i_beta: Measured stator currents (from Clarke transform)
  */
-void smo_update(smo_observer_t *smo,
-                float32_t v_alpha, float32_t v_beta,
-                float32_t i_alpha, float32_t i_beta) {
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void smo_update(
+                smo_observer_t * const smo,
+                const float32_t v_alpha, const float32_t v_beta,
+                const float32_t i_alpha, const float32_t i_beta) {
 
     /* 1. Current estimation error */
-    float32_t e_ia = i_alpha - smo->i_alpha_hat;
-    float32_t e_ib = i_beta  - smo->i_beta_hat;
+    const float32_t e_ia = i_alpha - smo->i_alpha_hat;
+    const float32_t e_ib = i_beta  - smo->i_beta_hat;
 
     /* 2. Sliding-mode compensation (sigmoid approximation reduces chattering)
      *    A pure sign() function works but creates high-frequency noise.
      *    Sigmoid: z = K * e / (|e| + epsilon)  approximates sign() smoothly. */
-    float32_t epsilon = 0.01f;  /* Boundary layer width — tune for noise vs. tracking */
-    float32_t z_alpha = smo->k_smo * e_ia / (fabsf(e_ia) + epsilon);
-    float32_t z_beta  = smo->k_smo * e_ib / (fabsf(e_ib) + epsilon);
+    const float32_t epsilon = 0.01f;  /* Boundary layer width — tune for noise vs. tracking */
+    const float32_t z_alpha = smo->k_smo * e_ia / (fabsf(e_ia) + epsilon);
+    const float32_t z_beta  = smo->k_smo * e_ib / (fabsf(e_ib) + epsilon);
 
     /* 3. Current observer update (Forward Euler)
      *    di_hat/dt = (1/L) * (V - R*i_hat - Z) */
-    float32_t inv_l = 1.0f / smo->l_s;
+    const float32_t inv_l = 1.0f / smo->l_s;
     smo->i_alpha_hat += smo->dt * inv_l * (v_alpha - smo->r_s * smo->i_alpha_hat - z_alpha);
     smo->i_beta_hat  += smo->dt * inv_l * (v_beta  - smo->r_s * smo->i_beta_hat  - z_beta);
 
@@ -89,6 +90,9 @@ $$\epsilon = -\Psi\omega\sin(\theta_e)\cos(\hat\theta) + \Psi\omega\cos(\theta_e
 For small tracking error, $\sin(\hat\theta - \theta_e) \approx \hat\theta - \theta_e$, giving a **linear error signal** that drives the PLL towards lock. The sign convention ensures **positive PI gains** produce stable tracking when $\omega > 0$.
 
 ```c
+#define FOC_PI       (3.14159265f)
+#define FOC_TWO_PI   (6.28318531f)
+
 typedef struct {
     float32_t omega_hat;   /* Estimated electrical frequency [rad/s] */
     float32_t theta_hat;   /* Estimated electrical angle [rad] */
@@ -105,12 +109,14 @@ typedef struct {
  *        Uses the standard error: ε = Eα·cos(θ̂) + Eβ·sin(θ̂)
  *        which equals Ψ·ω·sin(θ̂ - θe) and drives to zero at lock.
  */
-void update_pll(observer_pll_t *pll, float32_t e_alpha, float32_t e_beta) {
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline void update_pll(
+    observer_pll_t * const pll, 
+    const float32_t e_alpha, const float32_t e_beta) {
 
     /* 1. Calculate sin/cos of estimated angle.
           Use CORDIC here when it meaningfully improves the platform budget. */
-    float32_t cos_th = cosf(pll->theta_hat);
-    float32_t sin_th = sinf(pll->theta_hat);
+    const float32_t cos_th = cosf(pll->theta_hat);
+    const float32_t sin_th = sinf(pll->theta_hat);
 
     /* 2. PLL error function (standard convention, positive PI gains stable)
      *    ε = Eα·cos(θ̂) + Eβ·sin(θ̂) = Ψ·ω·sin(θ̂ - θe) */
@@ -118,9 +124,12 @@ void update_pll(observer_pll_t *pll, float32_t e_alpha, float32_t e_beta) {
 
     /* 3. Normalize error by BEMF amplitude to decouple PI gains from speed.
      *    This makes the PLL bandwidth approximately speed-independent. */
-    float32_t bemf_amp_sq = (e_alpha * e_alpha) + (e_beta * e_beta);
+    const float32_t bemf_amp_sq = (e_alpha * e_alpha) + (e_beta * e_beta);
+    
     if (bemf_amp_sq > 0.01f) {
         angle_error /= sqrtf(bemf_amp_sq);
+    } else {
+        /* MISRA C: Empty else branch for documented intentional fallthrough */
     }
 
     /* 4. PI controller for speed estimation */
@@ -131,8 +140,13 @@ void update_pll(observer_pll_t *pll, float32_t e_alpha, float32_t e_beta) {
     pll->theta_hat += pll->omega_hat * pll->dt;
 
     /* 6. Wrap angle to [-π, π] */
-    if (pll->theta_hat > PI)  pll->theta_hat -= TWO_PI;
-    if (pll->theta_hat < -PI) pll->theta_hat += TWO_PI;
+    if (pll->theta_hat > FOC_PI) {
+        pll->theta_hat -= FOC_TWO_PI;
+    } else if (pll->theta_hat < -FOC_PI) {
+        pll->theta_hat += FOC_TWO_PI;
+    } else {
+        /* Intentionally empty */
+    }
 }
 ```
 
@@ -146,6 +160,9 @@ void update_pll(observer_pll_t *pll, float32_t e_alpha, float32_t e_beta) {
 Before transitioning from open-loop to closed-loop, the PLL must demonstrate convergence:
 
 ```c
+#include <stdbool.h>
+#include <math.h>
+
 /**
  * @brief Check if the observer PLL has converged enough for closed-loop operation.
  *
@@ -153,31 +170,37 @@ Before transitioning from open-loop to closed-loop, the PLL must demonstrate con
  *                        Avoids redundant cosf/sinf — reuse what's already computed.
  * @return true if observer is trustworthy, false if still converging.
  */
-bool pll_is_converged(const observer_pll_t *pll, float32_t e_alpha, float32_t e_beta,
-                      float32_t cos_th, float32_t sin_th) {
+__attribute__((always_inline)) static inline bool pll_is_converged(
+    const observer_pll_t * const pll, 
+    const float32_t e_alpha, const float32_t e_beta,
+    const float32_t cos_th, const float32_t sin_th) {
+
+    bool is_locked = true;
 
     /* 1. BEMF amplitude must be above minimum threshold.
      *    Below this, the observer is extrapolating, not tracking. */
-    float32_t bemf_sq = (e_alpha * e_alpha) + (e_beta * e_beta);
-    if (bemf_sq < BEMF_MIN_THRESHOLD_SQ) {
-        return false;
+    const float32_t bemf_sq = (e_alpha * e_alpha) + (e_beta * e_beta);
+    if (__builtin_expect(!!(bemf_sq < BEMF_MIN_THRESHOLD_SQ), 0)) {
+        is_locked = false;
+    } else {
+        /* 2. Normalized PLL error magnitude should be small.
+         *    A locked PLL should have near-zero error. */
+        float32_t err = (e_alpha * cos_th) + (e_beta * sin_th);
+        err /= sqrtf(bemf_sq);
+
+        if (__builtin_expect(!!(fabsf(err) > PLL_LOCK_ERROR_THRESHOLD), 0)) {
+            is_locked = false;  /* Error too large — not locked */
+        } else {
+            /* 3. Speed estimate should be positive and reasonable */
+            if (__builtin_expect(!!(pll->omega_hat < OMEGA_MIN_FOR_SENSORLESS), 0)) {
+                is_locked = false;
+            } else {
+                /* System is securely locked */
+            }
+        }
     }
 
-    /* 2. Normalized PLL error magnitude should be small.
-     *    A locked PLL should have near-zero error. */
-    float32_t err = (e_alpha * cos_th) + (e_beta * sin_th);
-    err /= sqrtf(bemf_sq);
-
-    if (fabsf(err) > PLL_LOCK_ERROR_THRESHOLD) {
-        return false;  /* Error too large — not locked */
-    }
-
-    /* 3. Speed estimate should be positive and reasonable */
-    if (pll->omega_hat < OMEGA_MIN_FOR_SENSORLESS) {
-        return false;
-    }
-
-    return true;
+    return is_locked;
 }
 ```
 

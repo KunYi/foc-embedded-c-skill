@@ -33,6 +33,11 @@ Before recommending FMAC, explicitly evaluate:
 When FMAC is justified, here is a reference initialization and usage pattern for a first-order IIR low-pass filter on the current measurement path:
 
 ```c
+#include <stdint.h>
+
+#define FOC_ONE (1.0f)
+#define FMAC_Q15_SCALE (32767.0f)
+
 /**
  * @brief FMAC IIR filter initialization for current smoothing.
  *
@@ -46,30 +51,25 @@ When FMAC is justified, here is a reference initialization and usage pattern for
  *   b0 = alpha,  b1 = 0,  a1 = -(1 - alpha)
  * where alpha = dt / (RC + dt) in [0, 1)
  */
-void fmac_iir_init(float32_t alpha) {
+void fmac_iir_init(const float32_t alpha) {
 
     /* Enable FMAC clock */
     RCC->AHB1ENR |= RCC_AHB1ENR_FMACEN;
 
     /* Reset FMAC */
-    FMAC->CR = 0;
+    FMAC->CR = 0u;
 
     /* Convert float coefficients to Q1.15 */
-    int16_t b0_q15 = (int16_t)(alpha * 32767.0f);
-    int16_t b1_q15 = 0;
-    int16_t a1_q15 = (int16_t)(-(1.0f - alpha) * 32767.0f);
+    const int16_t b0_q15 = (int16_t)(alpha * FMAC_Q15_SCALE);
+    const int16_t b1_q15 = 0;
+    const int16_t a1_q15 = (int16_t)(-(FOC_ONE - alpha) * FMAC_Q15_SCALE);
 
-    /* Configure FMAC for IIR filter:
-     *   FUNC = 0b1xxxxxxx = IIR filter
-     *   P (number of b coefficients) = 2 (b0, b1)
-     *   Q (number of a coefficients) = 1 (a1)
-     *   R (input/output buffer threshold) */
-
+    /* Configure FMAC for IIR filter */
     /* Load coefficients into FMAC memory via WDATA */
     FMAC->PARAM = (2u << FMAC_PARAM_P_Pos)    /* P = 2 feedforward taps */
-                | (1u << FMAC_PARAM_Q_Pos)     /* Q = 1 feedback tap */
-                | (8u << FMAC_PARAM_R_Pos)     /* R = buffer size */
-                | FMAC_PARAM_FUNC_0;           /* IIR function select */
+                | (1u << FMAC_PARAM_Q_Pos)    /* Q = 1 feedback tap */
+                | (8u << FMAC_PARAM_R_Pos)    /* R = buffer size */
+                | FMAC_PARAM_FUNC_0;          /* IIR function select */
 
     /* Preload coefficients: write b0, b1, then a1 */
     FMAC->PARAM |= FMAC_PARAM_START;
@@ -87,7 +87,7 @@ void fmac_iir_init(float32_t alpha) {
  * @param raw_adc   Raw ADC current sample (converted to Q1.15)
  * @return          Filtered output (Q1.15)
  */
-int16_t fmac_iir_process(int16_t raw_q15) {
+__attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inline int16_t fmac_iir_process(const int16_t raw_q15) {
     /* Write input sample */
     FMAC->WDATA = (uint32_t)(uint16_t)raw_q15;
 

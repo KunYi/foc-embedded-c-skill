@@ -35,6 +35,8 @@ Gate driver shoot-through will vaporize the half-bridge. STM32 Advanced Timers p
 During the dead-time interval, neither FET is ON. Phase current freewheels through body diodes. The phase voltage is determined NOT by the PWM duty, but by the **polarity (sign) of the phase current**. This introduces a massive non-linear voltage error at zero-crossings, ruining low-speed FOC control and causing current THD.
 
 ```c
+#include <stdint.h>
+
 /**
  * @brief Compensates for Dead-time voltage errors.
  *        Apply this directly to phase voltage duties before updating timer registers.
@@ -46,8 +48,9 @@ During the dead-time interval, neither FET is ON. Phase current freewheels throu
  *                      Derive this from your ADC noise floor and current ripple.
  *                      Typical: 2-5% of rated motor current.
  */
-float32_t dead_time_compensation(float32_t raw_duty, float32_t i_phase,
-                                  float32_t dt_comp_value, float32_t i_threshold) {
+__attribute__((always_inline)) static inline float32_t dead_time_compensation(
+                                  const float32_t raw_duty, const float32_t i_phase,
+                                  const float32_t dt_comp_value, const float32_t i_threshold) {
     /* If current is positive, body diode drops voltage to GND during DT.
        Commanded voltage is effectively reduced → add compensation.
        If current is negative, body diode clamps to VBUS during DT.
@@ -57,6 +60,8 @@ float32_t dead_time_compensation(float32_t raw_duty, float32_t i_phase,
         return raw_duty + dt_comp_value; 
     } else if (i_phase < -i_threshold) {
         return raw_duty - dt_comp_value;
+    } else {
+        /* Intentionally empty for MISRA compliance */
     }
     
     /* Current is near zero-crossing: dead-zone region.
@@ -84,7 +89,7 @@ This is the core timer setup for 3-phase PWM generation. Use CubeMX to generate 
  * @param dead_time_ns   Desired dead-time (e.g., 500 for 500ns)
  * @param tim_clk_hz     Timer input clock (typically 170 MHz on STM32G4)
  */
-void tim1_pwm_init(uint32_t pwm_freq_hz, uint16_t dead_time_ns, uint32_t tim_clk_hz) {
+void tim1_pwm_init(const uint32_t pwm_freq_hz, const uint16_t dead_time_ns, const uint32_t tim_clk_hz) {
 
     /* Enable TIM1 clock */
     RCC->APB2ENR |= RCC_APB2ENR_TIM1EN;
@@ -92,18 +97,15 @@ void tim1_pwm_init(uint32_t pwm_freq_hz, uint16_t dead_time_ns, uint32_t tim_clk
     /* --- Counter Configuration --- */
     /* ARR = (Tim_CLK / (2 * PWM_freq)) - 1
      * Factor of 2 because center-aligned counts up AND down per period. */
-    uint32_t arr = (tim_clk_hz / (2u * pwm_freq_hz)) - 1u;
+    const uint32_t arr = (tim_clk_hz / (2u * pwm_freq_hz)) - 1u;
     TIM1->ARR = arr;
-    TIM1->PSC = 0;  /* No prescaler — full resolution */
+    TIM1->PSC = 0u;  /* No prescaler — full resolution */
 
     /* CR1: Center-Aligned Mode 1 (CMS=01), ARPE=1 (buffered ARR) */
     TIM1->CR1 = TIM_CR1_CMS_0 | TIM_CR1_ARPE;
 
-    /* Repetition Counter: RCR=1 means update event fires every OTHER period.
-     * This is essential for center-aligned mode:
-     *   RCR=0 → update at both top AND bottom → 2x ISR rate (usually unwanted)
-     *   RCR=1 → update only at bottom (valley) → 1x ISR rate at Fpwm */
-    TIM1->RCR = 1;
+    /* Repetition Counter: RCR=1 means update event fires every OTHER period. */
+    TIM1->RCR = 1u;
 
     /* --- Output Compare Configuration (Channels 1-3: PWM) --- */
     /* OC1M = PWM Mode 1 (110), preload enabled (OC1PE) */
@@ -112,16 +114,14 @@ void tim1_pwm_init(uint32_t pwm_freq_hz, uint16_t dead_time_ns, uint32_t tim_clk
     TIM1->CCMR2 = (6u << TIM_CCMR2_OC3M_Pos) | TIM_CCMR2_OC3PE;
 
     /* Initial duty = 50% (safe idle) */
-    uint32_t half_arr = arr >> 1;
+    const uint32_t half_arr = arr >> 1u;
     TIM1->CCR1 = half_arr;
     TIM1->CCR2 = half_arr;
     TIM1->CCR3 = half_arr;
 
     /* --- Channel 4: ADC Trigger Source --- */
-    /* CCR4 sets the sampling instant within the PWM period.
-     * Place it at the valley (counter = 0) or at a specific offset
-     * that avoids switching-noise ringing. */
-    TIM1->CCR4 = 1;  /* Near valley — fine-tune on bench */
+    /* CCR4 sets the sampling instant within the PWM period. */
+    TIM1->CCR4 = 1u;  /* Near valley — fine-tune on bench */
     TIM1->CCMR2 |= (6u << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
 
     /* TRGO2 = OC4REF → ADC external trigger source
@@ -137,15 +137,13 @@ void tim1_pwm_init(uint32_t pwm_freq_hz, uint16_t dead_time_ns, uint32_t tim_clk
     /* --- Break & Dead-Time (BDTR) --- */
     /* DTG calculation (simplified for short dead-times, DTG[7:5]=0xx):
      * Dead-time = DTG[7:0] × Tdts where Tdts = 1/Tim_CLK */
-    uint8_t dtg = (uint8_t)((uint64_t)dead_time_ns * tim_clk_hz / 1000000000ULL);
+    const uint8_t dtg = (uint8_t)((uint64_t)dead_time_ns * tim_clk_hz / 1000000000ULL);
 
-    TIM1->BDTR = (dtg & 0xFFu)
+    TIM1->BDTR = (uint32_t)(dtg & 0xFFu)
               | TIM_BDTR_BKE           /* Break enable (for COMP → OCP) */
               | TIM_BDTR_BKP           /* Break polarity (match your COMP output) */
               | TIM_BDTR_OSSI          /* Off-state idle: force OIS levels */
               | TIM_BDTR_OSSR;         /* Off-state run: complementary active */
-    /* MOE=0: outputs remain disabled until software explicitly enables them
-     * after all protection and init is complete. */
 
     /* Safe-state: High-Z (all FETs OFF) by default */
     TIM1->CR2 &= ~(TIM_CR2_OIS1 | TIM_CR2_OIS1N
@@ -154,10 +152,8 @@ void tim1_pwm_init(uint32_t pwm_freq_hz, uint16_t dead_time_ns, uint32_t tim_clk
 
     /* --- Start Timer --- */
     TIM1->EGR = TIM_EGR_UG;   /* Force update to load shadow registers */
-    TIM1->SR  = 0;             /* Clear any pending flags */
+    TIM1->SR  = 0u;           /* Clear any pending flags */
     TIM1->CR1 |= TIM_CR1_CEN; /* Start counting */
-
-    /* MOE will be set later by foc_enable_outputs() after all init is done */
 }
 
 /**
