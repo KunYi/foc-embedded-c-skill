@@ -125,7 +125,7 @@ void tim1_pwm_init(const uint32_t pwm_freq_hz, const uint16_t dead_time_ns, cons
      * The exact compare value is topology- and board-dependent.
      * Start from a candidate point near the intended valid-sample window,
      * then move it on the bench until the sampled current is clean and repeatable. */
-    TIM1->CCR4 = 1u;  /* Placeholder starting point only */
+    TIM1->CCR4 = 1u;  /* Illustrative placeholder only — do not ship without measured trigger placement validation */
     TIM1->CCMR2 |= (6u << TIM_CCMR2_OC4M_Pos) | TIM_CCMR2_OC4PE;
 
     /* TRGO2 = OC4REF → ADC external trigger source

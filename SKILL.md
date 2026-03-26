@@ -62,7 +62,7 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 
 When a user requests motor drive code or debugging analysis, use the following default sequence unless the task is clearly narrower (for example review-only, architecture comparison, or a focused bug hunt):
 
-1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, and PWM Frequency. If not, stop and ASK.
+1. **Information Gathering**: Check if the user specified the Motor Type, Shunt Config, PWM Frequency, Command Source, Control Mode, DC Bus Energy Path, and Power Entry Topology. If any of these materially affect the design and are still unknown, stop and ASK.
 2. **Parameter Identification**: Check if motor parameters are known. If not, guide through Auto-Tuning (see `auto-tuning-identification.md`).
 3. **Establish Physical Limits**: Before writing any math, read `stm32g4-foc-hardware.md` and `current-sensing-topology.md` to understand the ADC synchronization, dead-time, ringing, Kelvin routing, bootstrap, and PCB routing constraints.
 4. **Select Control Method**: Based on motor type and BEMF profile:
