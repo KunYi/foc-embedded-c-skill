@@ -49,6 +49,10 @@ The `references/` directory contains constraints for the following topics:
 - `fault-injection-and-abuse-testing.md`: deliberate fault injection, abuse cases, expected response categories, and failure-behavior validation.
 - `unit-conventions-and-control-contracts.md`: mechanical vs electrical units, RMS vs peak, torque/current contracts, sign conventions, and telemetry naming discipline.
 - `nvh-and-acoustic-optimization.md`: acoustic/noise sources, PWM and dead-time trade-offs, resonance awareness, and validation of smoothness.
+- `compliance-and-qualification.md`: qualification-style disturbance framing, repeatable validation evidence, and firmware-relevant product robustness expectations.
+- `motor-and-load-characterization.md`: inertia/friction/compliance characterization, resonance awareness, and why tuning on a free motor is not enough.
+- `resonance-identification-and-speed-avoidance.md`: narrow-band vibration diagnosis, forbidden-speed strategy, and resonance mitigation validation.
+- `compressor-and-refrigeration-drive-applications.md`: pressure-dependent compressor loads, correlated pressure/current/vibration analysis, and operating-map-based mitigation.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
@@ -88,6 +92,9 @@ Most modern large language models and agent frameworks can work with a repositor
 - Catch unit, sign, and frame mismatches before they become product bugs.
 - Explain likely abuse cases and how to validate failure behavior, not only nominal operation.
 - Treat acoustic smoothness and resonance avoidance as real product requirements when the application cares about them.
+- Recognize when tuning claims depend on the real load, not only the bare motor.
+- Help the team reason about qualification-style disturbance behavior and repeatable product evidence.
+- Diagnose coupled application problems such as pressure-dependent compressor vibration instead of assuming every symptom is a generic PI issue.
 
 ## License
 
@@ -100,4 +107,4 @@ See [LICENSE](./LICENSE) for the full text.
 ## Future Roadmap
 - Complete the `.vscode` settings and `CMakeLists.txt` open-source build skeleton.
 - Define pure Software-In-the-Loop (SIL) mock testing guidelines for FOC current loops.
-- Add NVH (Noise, Vibration, Harshness) considerations: PWM frequency selection, spread-spectrum PWM, acoustic noise.
+- Add cross-vendor portability guidance for non-STM32G4 platforms while preserving the same physics-first validation mindset.
