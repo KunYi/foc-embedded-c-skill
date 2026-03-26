@@ -55,6 +55,10 @@ The `references/` directory contains constraints for the following topics:
 - `compressor-and-refrigeration-drive-applications.md`: pressure-dependent compressor loads, correlated pressure/current/vibration analysis, and operating-map-based mitigation.
 - `data-logging-replay-and-diagnostics-workflow.md`: event snapshots, replay mindset, diagnostic classification, and field-friendly debug workflow.
 - `commissioning-and-bring-up-playbook.md`: staged first-power validation, safe loop-enablement order, and common bring-up failure patterns.
+- `configuration-and-parameter-governance.md`: parameter ownership, variant discipline, NVM corruption handling, and calibration traceability.
+- `fan-and-blower-applications.md`: airflow-device behavior, restriction sensitivity, startup quality, and acoustic priorities.
+- `pump-applications.md`: hydraulic-load behavior, startup under head/load, and pump-specific protection and ramp concerns.
+- `servo-actuator-applications.md`: trajectory quality, reversal behavior, hold stability, homing/endstop handling, and actuator-focused validation.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
@@ -99,6 +103,8 @@ Most modern large language models and agent frameworks can work with a repositor
 - Diagnose coupled application problems such as pressure-dependent compressor vibration instead of assuming every symptom is a generic PI issue.
 - Provide a usable debug workflow with event-triggered logging and replay-oriented diagnosis, not just advice to print more variables.
 - Guide staged commissioning so engineers know what must be proven before they energize the next control layer.
+- Treat parameter packs, calibration data, and hardware variants as governed product assets rather than loose constants.
+- Adapt recommendations to common application families such as fans, pumps, and servo actuators instead of treating every load the same way.
 
 ## License
 
