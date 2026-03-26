@@ -46,6 +46,9 @@ The `references/` directory contains constraints for the following topics:
 - `safety-architecture-and-diagnostic-coverage.md`: safety boundaries, latched vs recoverable faults, watchdog layering, plausibility checks, and diagnostic coverage framing.
 - `mechanical-integration-and-servo-behavior.md`: homing, endstops, mechanical brake release, gearbox/backlash/compliance effects, and resonance-aware servo integration.
 - `firmware-lifecycle-and-update-strategy.md`: bootloader/update strategy, rollback, protocol compatibility, configuration migration, and release safety.
+- `fault-injection-and-abuse-testing.md`: deliberate fault injection, abuse cases, expected response categories, and failure-behavior validation.
+- `unit-conventions-and-control-contracts.md`: mechanical vs electrical units, RMS vs peak, torque/current contracts, sign conventions, and telemetry naming discipline.
+- `nvh-and-acoustic-optimization.md`: acoustic/noise sources, PWM and dead-time trade-offs, resonance awareness, and validation of smoothness.
 
 **D. Generic Drives & Auto-Tuning**
 - `auto-tuning-identification.md`: Resistance ($R_s$), Inductance ($L_d/L_q$), BEMF profiling, PI Zero-pole cancellation with digital delay limits, Speed loop tuning.
@@ -82,6 +85,9 @@ Most modern large language models and agent frameworks can work with a repositor
 - Distinguish hard safety constraints from platform-specific preferences.
 - Propose product-grade validation steps using oscilloscope captures, logged telemetry, comparator trips, ADC timing checks, and thermal/protection tests.
 - Use `CORDIC`, `FMAC`, observers, sensing, and modulation references as engineering options, not blind rules.
+- Catch unit, sign, and frame mismatches before they become product bugs.
+- Explain likely abuse cases and how to validate failure behavior, not only nominal operation.
+- Treat acoustic smoothness and resonance avoidance as real product requirements when the application cares about them.
 
 ## License
 
