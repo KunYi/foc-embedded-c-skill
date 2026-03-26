@@ -3,6 +3,8 @@
 ## Overview
 This document covers the cascaded control loops for FOC: Position, Speed, and Current frames. The inner current loop (d-q axis) is the absolute priority. Execution latencies exceeding 20-30µs for this path will result in instability and poor THD.
 
+The timing figures and code patterns below are reference-grade starting points. Final placement, acceleration choice, and bandwidth targets must be derived from the actual PWM rate, MCU clock, plant dynamics, and measurement delay.
+
 ## 1. Cross-Coupling Decoupling (PI Feed-forward)
 The PM motor equations indicate that the d-axis and q-axis voltages are coupled entirely by the motor speed ($\omega_e$). To tune the PI controllers effectively as linear independent systems, you MUST decouple them.
 
@@ -22,8 +24,8 @@ typedef struct {
 
 /**
  * @brief High-frequency d-q current control with feed-forward decoupling.
- *        This function MUST be placed in .ramfunc (CCMRAM) 
- *        to ensure deterministic execution (< 5us budget).
+ *        This function is often a candidate for .ramfunc (CCMRAM)
+ *        or similar fast-memory placement when the platform budget is tight.
  */
 __attribute__((section(".ramfunc")))
 void foc_current_update(foc_current_loop_t *foc, float32_t id_ref, float32_t iq_ref, 
@@ -48,7 +50,7 @@ void foc_current_update(foc_current_loop_t *foc, float32_t id_ref, float32_t iq_
     float32_t v_sq  = (vd_target * vd_target) + (vq_target * vq_target);
     
     if (v_sq > (v_max * v_max)) {
-        float32_t scale = v_max / sqrtf(v_sq); /* Heavy instruction, consider FastInvSqrt */
+        float32_t scale = v_max / sqrtf(v_sq); /* Heavy instruction, consider a faster path only if justified */
         vd_target *= scale;
         vq_target *= scale;
     }
@@ -74,13 +76,13 @@ A robust drive feeds the output of the Position loop into the Speed loop, and th
 ### A. The Bandwidth Rule (Frequency Separation)
 Inner loops MUST execute exponentially faster than outer loops to remain mathematically decoupled. If you run the speed PI at the same frequency as the current PI without proper gains, the system will oscillate violently.
 - **Rule of Thumb Ratio**: 10:1
-- **Current Loop** ($I_q, I_d$): $10\text{kHz} \sim 20\text{kHz}$ (Bandwidth: $\approx 1\text{kHz} \sim 2\text{kHz}$)
-- **Speed Loop** ($\omega$): $1\text{kHz} \sim 2\text{kHz}$ (Bandwidth: $\approx 100\text{Hz}$)
-- **Position Loop** ($\theta$): $100\text{Hz} \sim 200\text{Hz}$ (Bandwidth: $\approx 10\text{Hz}$)
+- **Current Loop** ($I_q, I_d$): Commonly in the tens of kHz region, with bandwidth chosen well below switching frequency and adjusted for sensing delay, dead-time distortion, and plant inductance.
+- **Speed Loop** ($\omega$): Commonly around one decade slower than the current loop, but tune relative to inertia, friction, load shocks, and sensor quality.
+- **Position Loop** ($\theta$): Commonly another decade slower, unless the application deliberately pushes servo stiffness and has the sensing fidelity to support it.
 
 ### B. Position Loop (P Controller + Velocity Feed-Forward)
-Never use a Derivative (D) or Integral (I) term on the position loop. The D term amplifies encoder quantization noise infinitely. The I term causes position overshoot.
-Instead, use a Proportional (P) controller and feed-forward the target trajectory's derivative (target speed).
+As a default, prefer a Proportional (P) position loop with velocity feed-forward because it is easy to stabilize and avoids many quantization and windup problems.
+Integral or derivative action can still be valid in servo applications, but only when the sensing quality, anti-windup behavior, derivative filtering, and mechanical resonance risks are understood.
 
 ```c
 /**

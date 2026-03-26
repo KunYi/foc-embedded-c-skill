@@ -9,7 +9,7 @@ If the MCU enters a `HardFault_Handler()` or the Watchdog triggers a reset, soft
 **STM32G4 BDTR (`Break and Dead-Time Register`) Constraint:**
 - Set `BKP` (Break Polarity) to active High/Low depending on your physical external hardware comparator.
 - Disable `MOE` (Main Output Enable). When `MOE=0`, `OSSR` (Off-State Selection for Run mode) and `OSSI` (Off-State Selection for Idle mode) dictate pin states.
-- **Rule:** For hard faults, force the pins into the high-impedance (High-Z) analog state to prevent accidental bridge shoot-throughs from floating logic.
+- **Rule:** Define the hardware fault default state from system hazard analysis. High-Z is a common choice for many faults, but it is not universally safest if uncontrolled regeneration or overspeed can overvoltage the DC bus.
 
 ## 2. Choosing a Safe State: High-Z vs. ASC
 
@@ -24,7 +24,7 @@ When you trigger `TIM1_BRK` via COMP (Overcurrent) or software detects overspeed
 - **Mechanism**: All 3 Bottom FETs = ON (100% duty), All 3 Top FETs = OFF.
 - **Physics**: The motor is actively short-circuited across the ground rail. The BEMF is dissipated as heat purely in the stator windings and the $R_{ds(on)}$ of the bottom FETs. No voltage pumps back to the DC link!
 - **Risk**: Enormous braking torque (which can snap mechanical couplings) and extreme localized heating in the stator.
-- **When to Use**: Deep Field-Weakening (FW) region! If you lose control while running at 3x base speed, BEMF is 3x the bus voltage. If you use High-Z, the bus will explode. You MUST transition to ASC immediately.
+- **When to Use**: Consider ASC when uncontrolled regeneration or overspeed makes High-Z unsafe, especially in deep field-weakening or high-inertia backdriving scenarios. The correct choice depends on bus-energy absorption capability, mechanical survivability, and gate-driver safe-state behavior.
 
 ```c
 /**

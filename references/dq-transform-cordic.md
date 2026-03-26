@@ -3,7 +3,9 @@
 ## Overview
 Field-Oriented Control involves continuous rotations of the reference frame using Clarke and Park transforms. The `sin(theta)` and `cos(theta)` operations mathematically dominate the cycle count.
 
-## 1. Clarke / Park Equations (Power-Invariant)
+The implementation examples below show a common STM32G4 optimization pattern. Use CORDIC when it improves deterministic timing or frees enough CPU budget to matter; plain FPU code may remain preferable during bring-up, low-rate control paths, or when simplicity outweighs the saved cycles.
+
+## 1. Clarke / Park Equations (Amplitude-Invariant Form)
 - **Clarke (3-phase to 2-phase stationary)**:
   - $I_\alpha = \frac{2}{3}(I_A - 0.5 \times I_B - 0.5 \times I_C)$
   - $I_\beta = \frac{2}{3}(\frac{\sqrt{3}}{2} I_B - \frac{\sqrt{3}}{2} I_C)$
@@ -13,15 +15,15 @@ Field-Oriented Control involves continuous rotations of the reference frame usin
 
 ## 2. STM32G4 CORDIC Asynchronous Offloading
 
-If you use standard `arm_sin_f32()` from CMSIS-DSP, the floating-point Taylor series calculation consumes up to 70 CPU cycles.
+Software trigonometric paths are usually much slower than hardware CORDIC on STM32G4, but the exact cycle count depends strongly on the library, compiler, optimization settings, and whether you measure one function or an entire conversion path.
 STM32G4 has a specific **CORDIC Coprocessor**.
 
-**The Async Trick**: Do NOT wait for CORDIC!
+**The Async Trick**: Avoid blocking on CORDIC when useful work can overlap its latency.
 The standard approach is blocking (`write_cordic -> wait -> read_cordic`). 
-The **Extreme FOC Strategy** dictates Asynchronous CORDIC:
+A common high-performance STM32G4 strategy is asynchronous CORDIC:
 1. First step in ISR: Trigger CORDIC computation by writing the raw angle `theta`.
 2. Do other work: Fetch ADC readings, run protections, or calculate Clarke transforms while CORDIC crunches hardware math.
-3. Read CORDIC results: 6 CPU cycles later, your `sin` and `cos` are ready for the Park transform.
+3. Read CORDIC results after enough useful work has elapsed for the result to be ready or nearly ready.
 
 ```c
 /**
@@ -38,8 +40,8 @@ void cordic_async_park(float32_t i_alpha, float32_t i_beta, float32_t theta_rad,
     /* 2. Write angle to CORDIC WDATA to TRIGGER hardware calculation asynchronously */
     CORDIC->WDATA = (uint32_t)q31_angle;
     
-    /* ---- CPU IS NOW FREE FOR 6 CYCLES ---- */
-    /* (Execute Clarke transform here if not already done!) */
+    /* ---- CPU IS NOW FREE FOR OVERLAPPED WORK ---- */
+    /* (Execute Clarke transform or protection checks here if not already done.) */
     __NOP(); __NOP(); /* Example spacing */
     
     /* 3. Read back CORDIC RDATA (It automatically stalls CPU if not ready yet) */

@@ -1,6 +1,6 @@
 # FOC Drive Embedded C Skill
 
-An AI skill focused on embedded C development for motor control and Field-Oriented Control (FOC) systems, particularly targeting STM32G4xx microcontrollers. This skill provides expert guidance on high-frequency current loops, sensorless observers, space vector modulation, and engineering best practices for driving PMSM, BLDC, and ACIM motors.
+An AI skill focused on embedded C development for motor control and Field-Oriented Control (FOC) systems, particularly targeting STM32G4xx microcontrollers. This skill provides expert guidance on high-frequency current loops, sensorless observers, space vector modulation, and engineering best practices for driving PMSM and BLDC motors, with only partial applicability to ACIM control unless additional machine-specific models are provided.
 
 ## Core Philosophy
 

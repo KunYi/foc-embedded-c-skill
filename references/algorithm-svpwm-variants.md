@@ -3,6 +3,8 @@
 ## Overview
 This document transforms $V_\alpha$ and $V_\beta$ target voltages from the Inverse Clarke transform into physical Timer Duty cycles that drive the three-phase gates.
 
+Treat the code here as a reference implementation shape, not the only acceptable realization. Final modulation choice must consider current-sensing windows, dead-time effects, minimum pulse width, EMC, switching loss, and hardware protection behavior.
+
 ## 1. Mathematical Bounds (Linear vs Hexagon)
 Given a DC Bus voltage $V_{dc}$, the maximum phase voltage amplitude in the linear modulation region (inscribing the hexagon) is $V_{max} = \frac{V_{dc}}{\sqrt{3}}$. Exceeding this vector means you are over-modulating; the tips of your sine wave will flatten out.
 
@@ -24,7 +26,7 @@ void svpwm_generate(float32_t v_alpha, float32_t v_beta, float32_t v_dc,
     uint8_t B = (Y > 0.0f) ? 1 : 0;
     uint8_t C = (Z > 0.0f) ? 1 : 0;
     
-    /* Magic map translating binary flags to sectors 1-6 */
+    /* Example map translating binary flags to sectors 1-6 */
     uint8_t sector_map[] = {0, 2, 6, 1, 4, 3, 5, 0}; 
     uint8_t sector = sector_map[(A << 2) | (B << 1) | C];
 
@@ -40,7 +42,7 @@ void svpwm_generate(float32_t v_alpha, float32_t v_beta, float32_t v_dc,
         default: t1 = 0; t2 = 0; break;
     }
 
-    /* 4. Over-modulation check (T1 + T2 > V_dc) and scale */
+    /* 4. Example over-modulation check and rescale */
     float32_t scale = v_dc / (t1 + t2);
     if (scale < 1.0f) {
         t1 *= scale;
@@ -68,4 +70,4 @@ void svpwm_generate(float32_t v_alpha, float32_t v_beta, float32_t v_dc,
 
 ## 2. 5-Segment Discontinuous PWM (DPWM)
 At extremely high loads, switching heat ($\#FET_{transitions}$) is lethal. DPWM clamps one of the phase legs fully to $V_{dc}$ or GND for a 60-degree sector.
-- **Constraints**: Reduces switching losses by 33%, but introduces significant current THD because it distorts common-mode voltage dynamically. **Do NOT use DPWM around zero-crossings**, only apply it dynamically above 50% modulation index.
+- **Constraints**: DPWM can reduce switching loss substantially, but it also increases distortion and interacts with current reconstruction. Avoid applying it blindly around operating regions where torque ripple, acoustic noise, or current-sensing windows become unacceptable. A modulation-index threshold can be useful, but the correct boundary is hardware- and application-dependent.
