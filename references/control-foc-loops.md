@@ -67,4 +67,60 @@ When driving an IPMSM (where $L_q > L_d$), setting $I_d = 0$ leaves torque geome
 To verify Field Weakening code is successful:
 1. Rev the motor to maximum base RPM.
 2. Probe DAC mapping to $I_d$. It should aggressively dive negative as you push the throttle past base speed.
-3. Check the scope phase currents; they will no longer be perfectly sinusoidal, but you must prevent complete runaway if the inverter loses bus power during deep FW (leading to catastrophic overvoltage regeneration).
+## 3. Cascaded Outer Loops (Speed & Position)
+
+A robust drive feeds the output of the Position loop into the Speed loop, and the Speed loop into the Current loop.
+
+### A. The Bandwidth Rule (Frequency Separation)
+Inner loops MUST execute exponentially faster than outer loops to remain mathematically decoupled. If you run the speed PI at the same frequency as the current PI without proper gains, the system will oscillate violently.
+- **Rule of Thumb Ratio**: 10:1
+- **Current Loop** ($I_q, I_d$): $10\text{kHz} \sim 20\text{kHz}$ (Bandwidth: $\approx 1\text{kHz} \sim 2\text{kHz}$)
+- **Speed Loop** ($\omega$): $1\text{kHz} \sim 2\text{kHz}$ (Bandwidth: $\approx 100\text{Hz}$)
+- **Position Loop** ($\theta$): $100\text{Hz} \sim 200\text{Hz}$ (Bandwidth: $\approx 10\text{Hz}$)
+
+### B. Position Loop (P Controller + Velocity Feed-Forward)
+Never use a Derivative (D) or Integral (I) term on the position loop. The D term amplifies encoder quantization noise infinitely. The I term causes position overshoot.
+Instead, use a Proportional (P) controller and feed-forward the target trajectory's derivative (target speed).
+
+```c
+/**
+ * @brief Position controller yielding a target Speed [rad/s]
+ */
+float32_t foc_position_update(float32_t pos_target, float32_t pos_meas, 
+                              float32_t velocity_feedforward, float32_t kp) {
+    float32_t error = pos_target - pos_meas;
+    
+    /* Shortest-path phase wrapping for rotary systems [-PI, PI] */
+    if (error > PI)  error -= TWO_PI;
+    if (error < -PI) error += TWO_PI;
+    
+    float32_t speed_cmd = (error * kp) + velocity_feedforward;
+    
+    /* Clamp target speed to mechanical limits */
+    return clamp_f32(speed_cmd, -MAX_OMEGA, MAX_OMEGA);
+}
+```
+
+### C. Speed Loop (PI Controller + Inertia Feed-Forward)
+The speed loop determines the $I_q$ torque request. During aggressive acceleration, waiting for the PI error to integrate to the required torque causes a massive following error (lag). 
+If you know the mechanical inertia ($J$) of the system, inject the torque required to accelerate the mass instantly.
+
+```c
+/**
+ * @brief Speed controller yielding a target Torque (I_q) [A]
+ */
+float32_t foc_speed_update(pi_controller_t *pi_spd, float32_t spd_target, float32_t spd_meas, 
+                           float32_t accel_feedforward, float32_t system_inertia_J) {
+                           
+    /* Base PI torque request */
+    float32_t iq_pi = pi_update(pi_spd, spd_target, spd_meas);
+    
+    /* Inertia (Torque) Feed-forward: T = J * alpha */
+    /* Scale Torque to Current: Iq_ff = T_ff / Kt */
+    float32_t iq_ff = (accel_feedforward * system_inertia_J) / MOTOR_KT;
+    
+    float32_t iq_cmd = iq_pi + iq_ff;
+    
+    return clamp_f32(iq_cmd, -MAX_CURRENT, MAX_CURRENT);
+}
+```

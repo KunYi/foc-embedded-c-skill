@@ -26,6 +26,7 @@ The `references/` directory contains constraints for the following topics:
 **C. Hardware & System**
 - `stm32g4-foc-hardware.md`: OPAMP, COMP->BRK, TIM1_TRGO ADC Sync, Dead-Time distortion compensation.
 - `motor-protection-state-machine.md`: Startup, Open-loop alignment, Stall detection.
+- `emergency-protection-halt.md`: HardFault overrides, High-Z vs Active-Short-Circuit (ASC), Overspeed.
 
 ## Future Roadmap
 - Complete the `.vscode`, `CMakeLists.txt` open-source build skeleton.

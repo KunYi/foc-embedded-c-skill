@@ -29,6 +29,7 @@ Key Context Required:
 - Prioritize decoupling control (Cross-coupling decoupling) in the dq-frame.
 - Make protection (Overcurrent via COMP->TIM_BRK, Overvoltage, Stall) higher priority than speed/position tracking.
 - **Hardware Integration Priority**: Enforce strict TIM1_TRGO to ADC synchronization. Never output SVPWM duties without checking for dead-time current distortion. Alert the user about PCB Kelvin routing and Low-ESL shunt constraints during 1/2/3 Shunt discussions.
+- **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Explicit Override**: If you know a mathematically, computationally, or architecturally superior approach for the target platform (STM32G4) that transcends standard textbook FOC (e.g., Branchless FPU SVPWM sector mappings or zero-wait RAM executions), you are ENCOURAGED to propose it. You MUST logically justify the latency vs. math stability trade-offs.
 
 ## Reference Documents (Complete File List)
@@ -43,6 +44,7 @@ Quick-scan index of all available reference files. Read as needed:
 - `references/position-sensors.md`
 - `references/stm32g4-foc-hardware.md`
 - `references/motor-protection-state-machine.md`
+- `references/emergency-protection-halt.md`
 
 ## Provide Hardware Acceptance Criteria
 
