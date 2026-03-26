@@ -272,20 +272,41 @@ Integral or derivative action can still be valid in servo applications, but only
 ```c
 /**
  * @brief Position controller yielding a target Speed [rad/s]
+ *
+ *        Uses Proportional control with velocity feed-forward.
+ *        Can handle shortest-path phase wrapping for single-turn rotary systems.
+ *
+ * @param pos_target          Desired position [rad]
+ * @param pos_meas            Measured position [rad] (e.g., from encoder, absolute sensor)
+ * @param velocity_feedforward Feed-forward velocity [rad/s] (optional, set to 0 for P-only)
+ * @param kp                  Position proportional gain [rad/s per rad_error]
+ * @return                    Target speed to feed to speed loop [rad/s]
+ *
+ * Strategy: Prefer P-control for position to avoid integrator windup.
+ * If derivative action is needed, perform it with appropriate D-section filtering
+ * to suppress encoder noise and quantization effects.
  */
-float32_t foc_position_update(const float32_t pos_target, const float32_t pos_meas,
-                              const float32_t velocity_feedforward, const float32_t kp) {
+__attribute__((always_inline)) static inline float32_t foc_position_update(
+                                   const float32_t pos_target, const float32_t pos_meas,
+                                   const float32_t velocity_feedforward, const float32_t kp) {
+
     float32_t error = pos_target - pos_meas;
 
-    /* Shortest-path phase wrapping for rotary systems [-PI, PI] */
-    if (error > FOC_PI) {
-        error -= FOC_TWO_PI;
-    } else if (error < -FOC_PI) {
-        error += FOC_TWO_PI;
+    /* Shortest-path phase wrapping for single-turn rotary systems [-PI, PI].
+     * For multi-turn or linear actuators, omit this block. */
+    const float32_t pi = 3.14159265f;
+    const float32_t two_pi = 6.28318531f;
+
+    /* Map error into [-PI, PI] range to avoid taking the long way around */
+    if (error > pi) {
+        error -= two_pi;
+    } else if (error < -pi) {
+        error += two_pi;
     } else {
-        /* Intentionally empty */
+        /* Error already in valid range — intentionally empty */
     }
 
+    /* Proportional term + velocity feed-forward */
     const float32_t speed_cmd = (error * kp) + velocity_feedforward;
 
     /* Clamp target speed to mechanical limits */
