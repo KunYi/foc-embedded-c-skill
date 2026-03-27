@@ -129,5 +129,4 @@ See [LICENSE](./LICENSE) for the full text.
 
 ## Future Roadmap
 - Complete the `.vscode` settings and `CMakeLists.txt` open-source build skeleton.
-- Define pure Software-In-the-Loop (SIL) mock testing guidelines for FOC current loops.
-- Add cross-vendor portability guidance for non-STM32G4 platforms while preserving the same physics-first validation mindset.
+- Add portability guidance for future non-STM32G4 targets and older STM32 motor-control parts such as STM32F334, while preserving the same physics-first validation mindset.
