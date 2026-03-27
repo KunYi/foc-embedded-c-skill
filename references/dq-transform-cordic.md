@@ -164,3 +164,23 @@ ADC ISR Entry
 ```
 
 This pipeline typically completes in 3–8 µs on STM32G4 at 170 MHz, depending on compiler optimization, flash wait states, and whether critical functions are placed in CCMRAM (`.ramfunc`).
+
+## ISR Timing Baseline Checklist
+
+Capture and publish actual cycle budgets for each ISR phase on the target hardware and release build.
+
+Illustrative example from one optimized STM32G4-class implementation:
+
+- `cordic_write_angle` + ADC read: about 0.5-1.0 µs
+- `clarke_2ph`: about 0.2 µs
+- `cordic_read_park` + `foc_current_update` + `inv_park`: about 1.0-2.5 µs
+- `svpwm_generate` + `dead_time_compensation`: about 1.0-2.5 µs
+- TIM CCR update + post-processing: about 0.5 µs
+
+**Illustrative total**: about 3.0-7.0 µs for 20kHz FOC in a well-optimized STM32G4 firmware. Treat this as a benchmark example, not a universal guarantee.
+
+At minimum, publish:
+- the measurement method (`DWT_CYCCNT`, scope GPIO toggle, or equivalent)
+- build conditions (compiler flags, flash/RAM placement, debug vs release)
+- hardware revision and clock tree
+- worst-case operating points used during timing capture

@@ -64,6 +64,20 @@ Check if the user knows the Motor Parameters ($R_s, L, \Psi$, Pole Pairs). If un
 - **Configuration Discipline Matters**: Treat parameter sets, calibration data, and product variants as governed artifacts. Do not assume the right constants will always be paired with the right hardware.
 - **Simulation Boundaries Must Be Honest**: Use SIL and model-based validation to test algorithms, transitions, and assumptions, but do not present them as proof of ADC timing, EMI robustness, gate-driver behavior, thermal safety, or real mechanical/application physics unless they have been hardware-correlated.
 - **Measure Before You Conclude**: Prefer trusted instrumentation, well-grounded captures, and symptom-driven domain narrowing over fast but fragile conclusions from a single waveform or log.
+
+## Engineering Checklist (Timing and Verification)
+
+1. ISR Timing Baseline:
+   - Capture `DWT_CYCCNT` for full current-loop ISR on target hardware.
+   - Confirm baseline: 20kHz FOC must not exceed 10-12µs (hardware + overhead).
+   - Document per-block latency: ADC+Clarke, CORDIC/Trig, Current PI, InvPark+SVPWM, TIM update.
+   - Track worst-case across operating points (high/low speed, regen, fault recovery).
+
+2. Test and Verification:
+   - Add test cases for `t_delay` measurement, `sample_window` calculation, and immediate sampling-phase offset adjustments.
+   - Include regression tests for observer lock detection and degraded signal-to-noise behavior.
+   - Treat the published timing budget as a measured artifact tied to one firmware build, one hardware revision, and one instrumentation method.
+
 - **Emergency Halt Priority**: When facing unexpected hardware failures or MCU faults, calculating the Safe State (`High-Z` vs `Active Short Circuit`) is your absolute paramount objective. Software recovery algorithms are secondary to preventing equipment fire.
 - **Acceleration Philosophy**: Treat CORDIC and FMAC as first-class optimization tools, not dogma. On STM32G4 FOC projects, CORDIC is usually relevant and FMAC is often relevant because current, speed, observer, sensor, and compensator paths frequently include filtering. Use them when they improve real-time behavior without creating unacceptable observability, scaling, or safety-validation risk.
 - **Production Code Standard**: Prefer compact, efficient formulations used in production libraries (ST MC SDK, TI MotorWare) over textbook formulations when they are mathematically equivalent. Multiple valid representations exist for algorithms like SVPWM sector determination — verify end-to-end correctness rather than flagging non-textbook forms as bugs.
