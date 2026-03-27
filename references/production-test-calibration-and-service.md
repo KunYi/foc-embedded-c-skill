@@ -14,6 +14,21 @@ At minimum, consider checks for:
 
 Do not start torque production if the minimum self-test contract is not met.
 
+## 1.1 Manufacturing Self-Test (End-of-Line)
+
+A dedicated manufacturing test mode should execute with minimal human intervention and log a pass/fail result.
+
+Minimum manufacturing checks:
+- verify bus voltage and precharge events using an external test fixture
+- verify the ADC range and shunt/OPAMP gain with fixed known currents (use calibrated current source)
+- verify PWM output and dead-time behavior by measuring 3-phase complementary waveforms
+- verify break input and comparator trip path via controlled overcurrent injection (with safe current clamp)
+- verify encoder/hall transitions in all sectors (or sensorless angle consistency via open-loop ramp)
+- verify firmware mode transitions (STANDBY -> ALIGNMENT -> OPEN_LOOP -> CLOSED_LOOP) for correct state machine sequence
+- capture a test trace with time series of `I_d`, `I_q`, `theta_e`, and `V_bus` during a controlled spin run
+
+Include automated result logging and hardware binning tags (GOOD/BAD/REWORK). The production flow must not rely on tribal knowledge.
+
 ## 2. Calibration Lifecycle
 
 Define:

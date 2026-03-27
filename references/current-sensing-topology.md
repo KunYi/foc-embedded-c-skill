@@ -21,6 +21,34 @@ You MUST place a hardware low-pass RC filter before the OPAMP to smooth out PWM 
 - **The Dilemma**:
   - Too small $R/C$: High frequency switching noise hits the ADC.
   - Too large $R/C$: Delays the current signal! If your current loops delays by $5\mu s$ on a $20kHz$ loop, the d-q decoupling logic applies the counter-voltage to the WRONG electrical angle, causing instability.
+
+- **Design Formula**: For a first-order RC low-pass filter, use
+
+  $f_c = \frac{1}{2\pi R C}$
+
+- **Phase delay**: Group delay approximates
+
+  $t_{delay} \approx \frac{1}{2\pi f_c}$.
+
+  For a 20kHz PWM (50µs period), target $t_{delay} < 0.1\cdot T_{pwm}$ (5µs), which implies $f_c > 32kHz$. A practical starting point is $f_c = 3$ to $5\times f_{pwm}$.
+
+- **Settling window allocation**: For a center-aligned PWM current-sample point, the safe sampling aperture per half cycle must be:
+
+  $t_{usable} = \frac{T_{pwm}}{2} - 2\cdot t_{dead} - 2\cdot t_{ringing} - 2\cdot t_{settle} - t_{delay}$
+
+  where $t_{settle}$ is op-amp + ADC acquisition + trigger jitter margins. Require $t_{usable} > 2\mu s$ for robust operation in most STM32G4 setups.
+
+- **Example**: For 20kHz PWM and a 100kHz filter ($R = 2.2k\Omega$, $C \approx 720pF$), $t_{delay} \approx 1.6\mu s$. If dead-time + ringing + settle consumes 3µs per edge, $t_{usable} \approx 21.4\mu s$, so the sample instant can still be centered with about 10µs margin in the half-cycle.
+
+- **Control compensation**: If you need it, shift the estimated electrical angle by $\Delta\theta = \omega_e \cdot t_{delay}$ before Park/InvPark to keep d/q alignment accurate when filter delay is non-negligible.
+
+- **Phase delay and amplitude error**: Use the reference formula
+
+  $\phi(\omega) = -\arctan(\omega RC)$
+
+  At the maximum electrical frequency $\omega_{max}=2\pi\times 1000$ rad/s
+  (about 160 Hz electrical), keep the phase delay below 5 degrees.
+
 - **Rule of Thumb Constraint**: Start with a cut-off frequency high enough that analog delay remains a small fraction of the current-loop sample interval, then verify with scope data and closed-loop behavior. A multiple of the PWM frequency is a useful starting heuristic, not a substitute for measurement.
 - **Sampling-Edge Constraint**: Fast half-bridge transitions excite ringing on the switch node, shunt, and amplifier input network. Do not place the ADC sample on or immediately adjacent to a PWM edge. The required keep-out margin is board-dependent and must be measured on the real power stage.
 - **Kelvin + Filter Co-Design**: The RC filter only works as intended when the sensed voltage is actually the shunt voltage. Kelvin pickup points and tightly coupled differential routing matter as much as the filter values; a poor pickup layout turns the filter into a cleaner view of the wrong signal.

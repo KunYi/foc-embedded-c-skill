@@ -68,6 +68,53 @@ __attribute__((section(".ramfunc"))) __attribute__((always_inline)) static inlin
     smo->e_alpha_lpf += smo->lpf_alpha * (z_alpha - smo->e_alpha_lpf);
     smo->e_beta_lpf  += smo->lpf_alpha * (z_beta  - smo->e_beta_lpf);
 }
+
+/**
+ * @brief Determine whether SMO/PLL is converged by evaluating error and angle stability.
+ *
+ * Convergence criteria are critical in state transitions (OPEN_LOOP -> CLOSED_LOOP).
+ * 1. BEMF amplitude must exceed minimum threshold (ensures rotor is spinning).
+ * 2. PLL phase error magnitude must stay below defined limit for consecutive samples.
+ * 3. Frequency estimate must be stable within percent error margin across window.
+ */
+static inline bool smo_pll_is_converged(const float32_t e_alpha_lpf,
+                                       const float32_t e_beta_lpf,
+                                       const float32_t theta_hat,
+                                       const float32_t theta_prev,
+                                       const float32_t omega_hat,
+                                       const float32_t omega_prev,
+                                       const float32_t error_threshold_rad,
+                                       const float32_t omega_tol_pct,
+                                       const uint32_t stable_samples,
+                                       uint32_t *stable_count) {
+    const float32_t bemf_mag_sq = (e_alpha_lpf * e_alpha_lpf) + (e_beta_lpf * e_beta_lpf);
+    const float32_t bemf_min_sq = 0.01f; /* e.g., 10% rated BEMF magnitude squared (tune per machine) */
+
+    if (bemf_mag_sq < bemf_min_sq) {
+        *stable_count = 0u;
+        return false;
+    }
+
+    float32_t dtheta = theta_hat - theta_prev;
+    const float32_t pi = 3.14159265f;
+    if (dtheta > pi) { dtheta -= 2.0f * pi; }
+    if (dtheta < -pi) { dtheta += 2.0f * pi; }
+
+    if (fabsf(dtheta) > error_threshold_rad) {
+        *stable_count = 0u;
+        return false;
+    }
+
+    const float32_t omega_deviation = fabsf(omega_hat - omega_prev) / fmaxf(fabsf(omega_prev), 1e-3f);
+    if (omega_deviation > omega_tol_pct) {
+        *stable_count = 0u;
+        return false;
+    }
+
+    /* increment stability counter */
+    *stable_count += 1u;
+    return (*stable_count >= stable_samples);
+}
 ```
 
 - **Sliding Mode Gain ($K_{smo}$)**: Must be larger than the maximum expected BEMF magnitude ($\Psi_f \omega_{e,max}$). Too small: observer cannot track. Too large: more chattering noise to filter.
